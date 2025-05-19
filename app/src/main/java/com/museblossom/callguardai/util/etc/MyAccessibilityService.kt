@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.util
+package com.museblossom.callguardai.util.etc
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
@@ -8,8 +8,7 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
-import com.museblossom.deepvoice.ui.MainActivity
+import com.museblossom.callguardai.ui.activity.MainActivity
 
 
 class MyAccessibilityService : AccessibilityService() {

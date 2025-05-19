@@ -50,6 +50,11 @@ android {
         viewBinding true
         dataBinding true
     }
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets']
+        }
+    }
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.0'
     }
@@ -131,4 +136,6 @@ dependencies {
 
     implementation 'pl.bclogic:pulsator4droid:1.0.3'
     implementation "com.github.YvesCheung.RollingText:RollingText:1.3.0"
+
+    implementation 'com.github.MackHartley:RoundedProgressBar:3.0.0'
 }

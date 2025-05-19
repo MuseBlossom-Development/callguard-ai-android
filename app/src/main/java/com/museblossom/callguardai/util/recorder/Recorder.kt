@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.util
+package com.museblossom.callguardai.util.recorder
 
 import android.content.Context
 import android.content.Context.AUDIO_SERVICE
@@ -10,18 +10,17 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Vibrator
 import android.preference.PreferenceManager
-import android.telephony.TelephonyManager
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.UiThread
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.museblossom.deepvoice.Model.ServerResponse
-import com.museblossom.deepvoice.manager.RetrofitManager
-import com.museblossom.deepvoice.service.Mp3UploadService
+import com.museblossom.callguardai.Model.ServerResponse
+import com.museblossom.callguardai.util.retrofit.manager.RetrofitManager
+import com.museblossom.callguardai.util.retrofit.sevice.Mp3UploadService
+import com.museblossom.deepvoice.util.AudioSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody

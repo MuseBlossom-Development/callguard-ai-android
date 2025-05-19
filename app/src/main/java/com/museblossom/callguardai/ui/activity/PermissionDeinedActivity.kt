@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.ui
+package com.museblossom.callguardai.ui.activity
 
 import android.content.Context
 import android.content.Intent

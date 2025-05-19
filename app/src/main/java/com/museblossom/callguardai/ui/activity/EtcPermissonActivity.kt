@@ -1,5 +1,4 @@
-package com.museblossom.deepvoice.ui
-
+package com.museblossom.callguardai.ui.activity
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -94,9 +93,9 @@ class EtcPermissonActivity : AppCompatActivity() {
 
         override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
 //            Toast.makeText(this@EtcPermissonActivity, "권한 거부", Toast.LENGTH_SHORT).show()
-            moveToPermissonDeinedActivity()
             Log.d("Permission", "테드_권한 거부 : $deniedPermissions")
             Log.d("Permission", "테드_버전 여부 : ${Build.VERSION.SDK_INT}")
+            moveToPermissonDeinedActivity()
         }
 
     }
@@ -140,12 +139,14 @@ class EtcPermissonActivity : AppCompatActivity() {
                 .setPermissions(Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
                     Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.READ_MEDIA_AUDIO,
+//                    Manifest.permission.READ_MEDIA_AUDIO,
+                    // Removed READ_MEDIA_AUDIO
 //                    Manifest.permission.MANAGE_EXTERNAL_STORAGE,
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CALL_LOG,
+//                    Manifest.permission.READ_CALL_LOG,
+                    // Removed READ_CALL_LOG
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
                     Manifest.permission.VIBRATE)
                 .check()
@@ -162,7 +163,8 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CALL_LOG,
+//                    Manifest.permission.READ_CALL_LOG,
+                    // Removed READ_CALL_LOG
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
                     Manifest.permission.VIBRATE
                 )

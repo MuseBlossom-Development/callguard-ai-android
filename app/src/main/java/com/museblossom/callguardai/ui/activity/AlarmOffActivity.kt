@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.ui
+package com.museblossom.callguardai.ui.activity
 
 import android.app.NotificationManager
 import android.content.Context
@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityAlarmOffBinding
-import com.museblossom.deepvoice.util.Recorder
+import com.museblossom.callguardai.util.recorder.Recorder
 import io.github.tonnyl.spark.Spark
 
 

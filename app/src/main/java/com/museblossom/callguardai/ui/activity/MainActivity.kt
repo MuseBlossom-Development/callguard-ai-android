@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.ui
+package com.museblossom.callguardai.ui.activity
 
 import android.annotation.SuppressLint
 import android.content.ComponentName
@@ -29,18 +29,12 @@ import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityMainBinding
 import com.museblossom.callguardai.databinding.PermissionDialogBinding
 import com.museblossom.callguardai.ui.viewmodel.MainViewModel
+import com.museblossom.callguardai.util.etc.MyAccessibilityService
+import com.museblossom.callguardai.util.recorder.Recorder
 
 import com.museblossom.deepvoice.util.AudioSource
-import com.museblossom.deepvoice.util.MyAccessibilityService
-import com.museblossom.deepvoice.util.Recorder
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
-import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.io.OutputStream
-import java.util.Objects
-
 
 class MainActivity : AppCompatActivity() {
     private lateinit var recorder: Recorder
@@ -176,7 +170,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
-        val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val enabledServices = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES

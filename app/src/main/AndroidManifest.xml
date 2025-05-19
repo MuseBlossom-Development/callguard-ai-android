@@ -1,42 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools" >
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- ─────────────────────────────────────────── -->
+    <!--            SDK 버전 선언 (min 29)           -->
+    <!-- ─────────────────────────────────────────── -->
+    <uses-sdk
+        android:minSdkVersion="29"
+        android:targetSdkVersion="34" />
+
+    <!-- ─────────────────────────────────────────── -->
+    <!--               권한 선언 영역               -->
+    <!-- ─────────────────────────────────────────── -->
+    <!-- 포그라운드 서비스 -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- API 34 이상에서만 적용 -->
     <uses-permission
         android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"
         android:minSdkVersion="34" />
+
+    <!-- 네트워크, 녹음, 진동 등 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /> <!-- <uses-permission android:name="android.permission.CAPTURE_AUDIO_OUTPUT"/> -->
-    <!-- <uses-permission android:name="android.permission.CALL_PHONE" /> -->
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" /> <!-- <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" /> -->
-    <uses-permission
-        android:name="android.permission.READ_MEDIA_AUDIO"
-        android:minSdkVersion="33" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"
-        tools:ignore="ScopedStorage" />
-    <uses-permission
-        android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission
-        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32"
-        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
-    <uses-permission android:name="android.permission.READ_CALL_LOG" /> <!-- <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" /> -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
 
+    <!-- 쿼리할 패키지 -->
     <queries>
         <package android:name="com.samsung.accessibility.installed_service" />
     </queries>
 
+    <!-- ─────────────────────────────────────────── -->
+    <!--               애플리케이션 영역             -->
+    <!-- ─────────────────────────────────────────── -->
     <application
+        android:name=".AppClass"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -45,20 +47,55 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.CallGuardAI"
-        tools:targetApi="31" >
+        tools:targetApi="31">
+
+        <!-- 스플래시 / 런처 -->
         <activity
             android:name=".ui.activity.SplashActivity"
-            android:exported="true" >
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".ui.activity.TestActivity"
-            android:exported="false" >
-        </activity>
-    </application>
 
+        <!-- 메인 등 나머지 액티비티 -->
+        <activity android:name=".ui.activity.MainActivity" android:exported="true" />
+        <activity android:name=".ui.activity.TestActivity" android:exported="false" />
+        <activity android:name=".ui.activity.PermissionDeinedActivity" android:exported="false" />
+        <activity android:name=".ui.activity.EtcPermissonActivity" android:exported="false" />
+        <activity android:name=".ui.activity.AlarmOffActivity" android:exported="false" />
+
+        <!-- 통화 녹음 서비스 -->
+        <service
+            android:name=".util.audio.CallRecordingService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:label="CallRecordingService" />
+
+        <!-- 전화 상태 브로드캐스트 리시버 -->
+        <receiver
+            android:name=".util.etc.PhoneBroadcastReceiver"
+            android:exported="true">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.PHONE_STATE" />
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 접근성 서비스 (VOIP 감지 등) -->
+        <service
+            android:name=".util.etc.MyAccessibilityService"
+            android:exported="false"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+    </application>
 </manifest>

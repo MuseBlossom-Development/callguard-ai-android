@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.manager
+package com.museblossom.callguardai.util.retrofit.manager
 
 import com.google.gson.GsonBuilder
 import okhttp3.OkHttpClient

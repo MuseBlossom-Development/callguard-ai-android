@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.util
+package com.museblossom.callguardai.util.etc
 
 import android.content.Context
 import android.content.res.Resources
@@ -6,8 +6,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.databinding.DataBindingUtil
-import com.museblossom.deepvoice.R
-import com.museblossom.deepvoice.databinding.ToastSampleBinding
+import com.museblossom.callguardai.R
+import com.museblossom.callguardai.databinding.ToastSampleBinding
 
 object SampleToast {
 

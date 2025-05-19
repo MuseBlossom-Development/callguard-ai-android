@@ -1,4 +1,4 @@
-package com.museblossom.deepvoice.util
+package com.museblossom.callguardai.util.etc
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -6,7 +6,7 @@ import android.content.Context
 import android.os.Build
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
-import com.museblossom.deepvoice.R
+import com.museblossom.callguardai.R
 import java.util.*
 
 object Notifications {

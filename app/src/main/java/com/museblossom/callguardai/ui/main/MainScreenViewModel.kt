@@ -49,11 +49,11 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
     }
 
     private suspend fun printSystemInfo() {
-        printMessage(String.format("System Info: %s\n", com.whispercpp.whisper.WhisperContext.getSystemInfo()))
+        printMessage(String.format("시스템 정보: %s\n", com.whispercpp.whisper.WhisperContext.getSystemInfo()))
     }
 
     private suspend fun loadData() {
-        printMessage("Loading data...\n")
+        printMessage("데이터 로딩 중...\n")
         try {
             copyAssets()
             loadBaseModel()
@@ -72,21 +72,17 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
     private suspend fun copyAssets() = withContext(Dispatchers.IO) {
         modelsPath.mkdirs()
         samplesPath.mkdirs()
-        //application.copyData("models", modelsPath, ::printMessage)
         application.copyData("samples", samplesPath, ::printMessage)
-        printMessage("All data copied to working directory.\n")
+        printMessage("모든 데이터가 작업 디렉토리로 복사되었습니다.\n")
     }
 
     private suspend fun loadBaseModel() = withContext(Dispatchers.IO) {
-        printMessage("Loading model...\n")
+        printMessage("모델 로딩 중...\n")
         val models = application.assets.list("models/")
         if (models != null) {
             whisperContext = com.whispercpp.whisper.WhisperContext.createContextFromAsset(application.assets, "models/" + models[0])
-            printMessage("Loaded model ${models[0]}.\n")
+            printMessage("모델 ${models[0]} 로드 완료.\n")
         }
-
-        //val firstModel = modelsPath.listFiles()!!.first()
-        //whisperContext = WhisperContext.createContextFromFile(firstModel.absolutePath)
     }
 
     fun benchmark() = viewModelScope.launch {
@@ -98,23 +94,21 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
     }
 
     private suspend fun runBenchmark(nthreads: Int) {
-        if (!canTranscribe) {
-            return
-        }
+        if (!canTranscribe) return
 
         canTranscribe = false
 
-        printMessage("Running benchmark. This will take minutes...\n")
-        whisperContext?.benchMemory(nthreads)?.let{ printMessage(it) }
+        printMessage("벤치마크 실행 중. 몇 분 소요됩니다...\n")
+        whisperContext?.benchMemory(nthreads)?.let { printMessage(it) }
         printMessage("\n")
-        whisperContext?.benchGgmlMulMat(nthreads)?.let{ printMessage(it) }
+        whisperContext?.benchGgmlMulMat(nthreads)?.let { printMessage(it) }
 
         canTranscribe = true
     }
 
     private suspend fun getFirstSample(): File = withContext(Dispatchers.IO) {
-        Log.d("gg","확인좀 : ${samplesPath.name}")
-        Log.d("gg","확인좀  : ${samplesPath.listFiles().get(0)}")
+        Log.d(LOG_TAG, "샘플 디렉토리 이름: ${samplesPath.name}")
+        Log.d(LOG_TAG, "첫 번째 샘플 파일: ${samplesPath.listFiles()?.get(0)}")
         samplesPath.listFiles()!!.first()
     }
 
@@ -136,22 +130,20 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
     }
 
     private suspend fun transcribeAudio(file: File) {
-        if (!canTranscribe) {
-            return
-        }
+        if (!canTranscribe) return
 
         canTranscribe = false
 
         try {
-            printMessage("Reading wave samples... ")
+            printMessage("웨이브 샘플 읽는 중... ")
             val data = readAudioSamples(file)
-            printMessage("파일 확인 : ${file.name} ")
+            printMessage("파일 확인: ${file.name} ")
             printMessage("${data.size / (16000 / 1000)} ms\n")
-            printMessage("Transcribing data...\n")
+            printMessage("전사 중...\n")
             val start = System.currentTimeMillis()
             val text = whisperContext?.transcribeData(data)
             val elapsed = System.currentTimeMillis() - start
-            printMessage("Done ($elapsed ms): \n$text\n")
+            printMessage("완료 ($elapsed ms): \n$text\n")
         } catch (e: Exception) {
             Log.w(LOG_TAG, e)
             printMessage("${e.localizedMessage}\n")
@@ -198,6 +190,7 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
             stopPlayback()
         }
     }
+
     private suspend fun loadSampleFiles() = withContext(Dispatchers.IO) {
         val supportedExtensions = listOf("wav", "mp3", "m4a", "flac", "ogg", "aac")
         val files = samplesPath
@@ -205,12 +198,13 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
             ?.filter { file -> file.extension.lowercase() in supportedExtensions }
             ?.sortedBy { it.name } ?: emptyList()
 
-        Log.d("SampleList", "Loaded ${files.size} supported audio files")
+        Log.d(LOG_TAG, "지원되는 오디오 파일 ${files.size}개 로드 완료")
 
         withContext(Dispatchers.Main) {
             sampleFiles = files
         }
     }
+
     fun transcribeSampleFile(file: File) = viewModelScope.launch {
         transcribeAudio(file)
     }
@@ -233,15 +227,15 @@ private suspend fun Context.copyData(
 ) = withContext(Dispatchers.IO) {
     assets.list(assetDirName)?.forEach { name ->
         val assetPath = "$assetDirName/$name"
-        Log.v(LOG_TAG, "Processing $assetPath...")
+        Log.v(LOG_TAG, "처리 중: $assetPath...")
         val destination = File(destDir, name)
-        Log.v(LOG_TAG, "Copying $assetPath to $destination...")
-        printMessage("Copying $name...\n")
+        Log.v(LOG_TAG, "복사 중: $assetPath -> $destination...")
+        printMessage("복사 중: $name...\n")
         assets.open(assetPath).use { input ->
             destination.outputStream().use { output ->
                 input.copyTo(output)
             }
         }
-        Log.v(LOG_TAG, "Copied $assetPath to $destination")
+        Log.v(LOG_TAG, "복사 완료: $assetPath -> $destination")
     }
 }

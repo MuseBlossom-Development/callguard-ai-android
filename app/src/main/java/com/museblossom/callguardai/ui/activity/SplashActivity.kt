@@ -14,26 +14,31 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.View
 import android.view.accessibility.AccessibilityManager
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.denzcoskun.imageslider.ImageSlider
 import com.denzcoskun.imageslider.constants.ScaleTypes
 import com.denzcoskun.imageslider.models.SlideModel
+import com.mackhartley.roundedprogressbar.RoundedProgressBar
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivitySplashBinding
 import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
-import com.museblossom.deepvoice.ui.EtcPermissonActivity
-import com.museblossom.deepvoice.ui.MainActivity
-import com.museblossom.deepvoice.ui.MainActivity.Companion.getAppDeclaredPermissions
+import com.museblossom.callguardai.ui.viewmodel.SplashViewModel
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
+import kotlinx.coroutines.launch
 import render.animations.Render
-
+import java.io.File
 
 
 class SplashActivity : AppCompatActivity() {
@@ -43,8 +48,11 @@ class SplashActivity : AppCompatActivity() {
     private lateinit var dialogPlus: DialogPlus
     private lateinit var customView: PermissionOverlayDialogBinding
     private lateinit var viewHolder: ViewHolder
+    private lateinit var progressBar: RoundedProgressBar
+    private lateinit var statusTextView: TextView
     private  var permissionsGranted = true
     private var isPause = false
+    private val viewModel: SplashViewModel by viewModels()
 
 
     override fun onResume() {
@@ -68,6 +76,8 @@ class SplashActivity : AppCompatActivity() {
 //        binding.logo.alpha = 0f
 //        binding.logoText.alpha = 0f
         initValue()
+
+
     }
 
     private fun initValue() {
@@ -75,6 +85,8 @@ class SplashActivity : AppCompatActivity() {
 
         val logoImage = binding.logo
         val logoText = binding.logoText
+        statusTextView = binding.tvStatus
+        progressBar = binding.progressBar
 
         fadeInViewsSequentially(logoImage, logoText, 1000L)
     }
@@ -111,11 +123,20 @@ class SplashActivity : AppCompatActivity() {
                     }
 
                     override fun onAnimationEnd(animation: Animator) {
-                        dialogSetting()
-                        if (!Settings.canDrawOverlays(applicationContext)) {
-                            showOverlayPermissionDialog(applicationContext)
+                        Log.d("다운확인 ","애니메이션 끝남")
+                        if(!checkModelExists()){
+                            downloadModel()
                         }else{
-                            moveToEtcPermissionActivity()
+                            progressBar.visibility = View.VISIBLE
+                            progressBar.setProgressPercentage(100.0)
+                            statusTextView.text = "준비 완료"
+//                        navigateToMain()
+                            dialogSetting()
+                            if (!Settings.canDrawOverlays(applicationContext)) {
+                                showOverlayPermissionDialog(applicationContext)
+                            }else{
+                                moveToEtcPermissionActivity()
+                            }
                         }
 //                        else {
 //                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -126,7 +147,6 @@ class SplashActivity : AppCompatActivity() {
 //                            }
 //                        }
                     }
-
                     override fun onAnimationCancel(animation: Animator) {
 
                     }
@@ -213,34 +233,6 @@ class SplashActivity : AppCompatActivity() {
         }
     }
 
-    fun excludeFromBatteryOptimization(context: Context) {
-        // Android 6.0 (Marshmallow) 이상에서 배터리 최적화 제외 가능
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val packageName = context.packageName
-            val intent = Intent()
-            val powerManager =
-                context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            Log.e("확인", "배터리 최적화")
-            // 앱이 이미 배터리 최적화에서 제외되어 있는지 확인
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                intent.data = Uri.parse("package:$packageName")
-                try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    Log.e("확인", "배터리 최적화11")
-                    Toast.makeText(context, "배터리 최적화 설정 화면을 열 수 없습니다.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Log.e("확인", "배터리 최적화 Ok")
-                Toast.makeText(context, "앱이 이미 배터리 최적화에서 제외되어 있습니다.", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Log.e("확인", "배터리 최적화22")
-            Toast.makeText(context, "Android 6.0 이상에서만 지원됩니다.", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     private val activityResultLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -322,43 +314,8 @@ class SplashActivity : AppCompatActivity() {
                 Log.d("Permission", "권한이 승인되었습니다.")
                 isPause = false // 권한이 승인된 경우 다이얼로그를 다시 표시할 수 있도록 초기화
             }
-
-//            if (deniedPermissions.isEmpty()) {
-//                Log.d("Permission", "모든 권한을 획득했습니다: $grantedPermissions")
-//                // 모든 권한이 허용됨, 필요한 후속 작업 수행
-//                isPause = false
-//            } else {
-//
-//                Log.d("Permission", "권한 요청 실패: $deniedPermissions")
-//                if (deniedPermissions.size == 1) {
-//                    if (deniedPermissions.contains("android.permission.SYSTEM_ALERT_WINDOW")) {
-//                        moveToMainActivity()
-//                    } else {
-//                        Log.d("Permission", "권한 요청 실패1111: $deniedPermissions")
-//                        checkAndRequestPermissions()
-//                    }
-//                }    // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
-//            else {
-//                    Log.d("Permission", "권한 요청 실패2222: $deniedPermissions")
-//                    showEtcPermission(this@SplashActivity)
-//                }
-//            }
         }
     }
-
-    private fun checkAndRequestPermissions() {
-        val permissionsToRequest = getAppDeclaredPermissions(this)?.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }?.toTypedArray()
-
-        if (!permissionsToRequest.isNullOrEmpty()) {
-            ActivityCompat.requestPermissions(this,permissionsToRequest, REQUEST_PERMISSION_CODE)
-        } else {
-            Log.d("Permission", "모든 권한이 이미 부여되었습니다.")
-            // 모든 권한이 이미 부여된 경우 후속 작업을 수행
-        }
-    }
-
 
     private fun showEtcPermission(context: Context) {
 
@@ -377,6 +334,43 @@ class SplashActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun checkModelExists(): Boolean{
+        val ggmlFile = File(filesDir, "ggml-small.bin")
+        return if (ggmlFile.exists()) {
+            Log.d("다운확인 ","파일있음")
+            true
+        }else{
+            false
+        }
+    }
+
+    private fun downloadModel(){
+        viewModel.ensureGgmlFile()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.progress.collect { pct ->
+                    when {
+                        pct < 0.0 -> statusTextView.text = "다운로드 실패"
+                        pct < 100.0 -> {
+                            progressBar.visibility = View.VISIBLE
+                            progressBar.setProgressPercentage(pct)
+                            statusTextView.text = "다운로드 중: ${"%.1f".format(pct)}%"
+                        }
+                        else -> {
+                            statusTextView.text = "준비 완료"
+//                        navigateToMain()
+                            dialogSetting()
+                            if (!Settings.canDrawOverlays(applicationContext)) {
+                                showOverlayPermissionDialog(applicationContext)
+                            }else{
+                                moveToEtcPermissionActivity()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
 
     companion object {
