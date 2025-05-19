@@ -1,0 +1,4 @@
+<resources>
+    <string name="channel_id__call_recording" translatable="false">channel_id__call_recording</string>
+    <string name="channel_id__deep_voice_detect" translatable="false">channel_id__deep_voice_detect</string>
+</resources>

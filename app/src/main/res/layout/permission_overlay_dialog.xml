@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/dosaCallDialog"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/dialog_round"
+    android:elevation="22dp"
+    android:orientation="vertical"
+    app:backgroundTint="@android:color/transparent"
+    app:backgroundTintMode="add">
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline_vertical"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.02" />
+
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="20dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginBottom="60dp"
+        android:gravity="center"
+        android:orientation="vertical"
+        app:layout_constraintTop_toTopOf="parent">
+
+
+<!--        <androidx.cardview.widget.CardView-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            app:cardCornerRadius="10dp">-->
+
+<!--            <com.denzcoskun.imageslider.ImageSlider-->
+<!--                android:id="@+id/tutorialImage"-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="300dp"-->
+<!--                android:elevation="0dp"-->
+<!--                app:iss_text_align="CENTER"/>-->
+<!--        </androidx.cardview.widget.CardView>-->
+
+        <com.denzcoskun.imageslider.ImageSlider
+            android:id="@+id/tutorialImage"
+            android:layout_width="wrap_content"
+            android:layout_height="300dp"
+            app:iss_placeholder="@color/white"
+            app:iss_text_align="CENTER"/>
+
+
+<!--        <androidx.appcompat.widget.AppCompatImageView-->
+<!--            android:id="@+id/tutorialImage"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="300dp"-->
+<!--            android:src="@drawable/overlay_permission"/>-->
+
+        <androidx.appcompat.widget.AppCompatButton
+            android:id="@+id/movePermissionBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="24dp"
+            android:layout_marginBottom="60dp"
+            android:background="@drawable/button_background"
+            android:clickable="false"
+            android:text="이동하기"
+            android:textColor="@color/white"
+            android:textSize="20dp" />
+
+        <!--        <FrameLayout-->
+        <!--            android:id="@+id/moveToPermisson"-->
+        <!--            android:layout_width="50dp"-->
+        <!--            android:layout_height="50dp"-->
+        <!--            android:layout_marginTop="40dp"-->
+        <!--            android:layout_marginBottom="20dp">-->
+        <!--            <Button-->
+        <!--                android:layout_width="wrap_content"-->
+        <!--                android:layout_height="wrap_content"-->
+        <!--                android:layout_gravity="center"-->
+        <!--                android:clickable="false"-->
+        <!--                android:text="닫기"-->
+        <!--                android:textSize="13dp" />-->
+        <!--        </FrameLayout>-->
+    </LinearLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -2,4 +2,11 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="red">#FF0000</color>
+    <color name="mainAppColor">#7fe0ff</color>
+    <color name="sucessColor">#24B800</color>
+    <color name="aiCautionColor">#FFD600</color>
+    <color name="aiWarningColor">#F64E59</color>
+    <color name="dialogplus_black_overlay">#60000000</color>
+
 </resources>

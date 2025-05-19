@@ -13,10 +13,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.museblossom.callguardai.media.decodeWaveFile
-import com.museblossom.callguardai.recorder.Recorder
-
-import com.whispercpp.whisper.WhisperContext
+import com.museblossom.callguardai.util.testRecorder.decodeWaveFile
+import com.museblossom.callguardai.util.testRecorder.RecorderOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -38,7 +36,7 @@ class MainScreenViewModel(private val application: Application) : ViewModel() {
 
     private val modelsPath = File(application.filesDir, "models")
     private val samplesPath = File(application.filesDir, "samples")
-    private var recorder: Recorder = Recorder()
+    private var recorder: RecorderOrigin = RecorderOrigin()
     private var whisperContext: com.whispercpp.whisper.WhisperContext? = null
     private var mediaPlayer: MediaPlayer? = null
     private var recordedFile: File? = null

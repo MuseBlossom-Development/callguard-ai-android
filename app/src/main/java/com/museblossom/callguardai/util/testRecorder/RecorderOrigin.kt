@@ -1,10 +1,9 @@
-package com.museblossom.callguardai.recorder
+package com.museblossom.callguardai.util.testRecorder
 
 import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import com.museblossom.callguardai.media.encodeWaveFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -12,7 +11,7 @@ import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
-class Recorder {
+class RecorderOrigin {
     private val scope: CoroutineScope = CoroutineScope(
         Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     )
