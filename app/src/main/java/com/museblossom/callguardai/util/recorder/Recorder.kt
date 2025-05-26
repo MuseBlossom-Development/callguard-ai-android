@@ -294,7 +294,7 @@ class Recorder(
         }
     }
 
-    suspend fun uploadMp3File(filePath: String) {
+    fun uploadMp3File(filePath: String) {
         // 업로드할 파일 객체 생성
         Log.e("확인", "딥보이스 업로드 시작 확인")
         val file = File(filePath)

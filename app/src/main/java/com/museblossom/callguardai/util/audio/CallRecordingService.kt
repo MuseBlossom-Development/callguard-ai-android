@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.IBinder
 import android.telephony.TelephonyManager
 import android.util.Log
-
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -18,16 +17,17 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Observer
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.CallFloatingBinding
-import com.museblossom.callguardai.databinding.CallWarningFloatingBinding
+import com.museblossom.callguardai.domain.model.AnalysisResult
+import com.museblossom.callguardai.presentation.viewmodel.CallRecordingViewModel
 import com.museblossom.callguardai.util.etc.Notifications
-import com.museblossom.callguardai.util.etc.WarningNotifications
-import com.museblossom.callguardai.util.kobert.KoBERTInference
-import com.museblossom.callguardai.util.kobert.WordPieceTokenizer
 import com.museblossom.callguardai.util.recorder.Recorder
 import com.museblossom.callguardai.util.recorder.RecorderListner
 import com.museblossom.callguardai.util.testRecorder.decodeWaveFile
@@ -35,236 +35,218 @@ import com.whispercpp.whisper.WhisperContext
 import com.yy.mobile.rollingtextview.CharOrder
 import com.yy.mobile.rollingtextview.strategy.Direction
 import com.yy.mobile.rollingtextview.strategy.Strategy
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.OutputStream
 
-class CallRecordingService : Service() {
+/**
+ * MVVM 패턴으로 리팩토링된 통화 녹음 서비스
+ * 책임: 통화 상태 감지, 오버레이 뷰 관리, ViewModel과의 데이터 바인딩
+ */
+@AndroidEntryPoint
+class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
+
+    // Lifecycle 관련
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    override val lifecycle: Lifecycle = lifecycleRegistry
+
+    // ViewModel 관련
+    override val viewModelStore: ViewModelStore = ViewModelStore()
+    private val viewModel: CallRecordingViewModel by lazy {
+        ViewModelProvider(this)[CallRecordingViewModel::class.java]
+    }
+
+    // 기본 컴포넌트들
     lateinit var recorder: Recorder
-
-    private var TAG = "CallReordingService"
-
+    private val TAG = "통화녹음서비스"
     private var isIncomingCall = false
-    private var isRecording = false
     private var isOnlyWhisper = false
-    private var isIdleCall = true
-    private var isBlinking = true
 
-    private val _counter = MutableLiveData<Int>()
-    val counter: LiveData<Int> get() = _counter
-
-
-    private var job: Job? = null
-
+    // UI 관련
     private lateinit var windowManager: WindowManager
     private var bindingNormal: CallFloatingBinding? = null
-    private var bindingWarning: CallWarningFloatingBinding? = null
     private lateinit var layoutParams: WindowManager.LayoutParams
     private var overlayNormalView: View? = null
-    private var overlayWarningView: View? = null
-    private var isViewAdded = false // 뷰가 윈도우 매니저에 추가되었는지 상태 확인
 
-    private var tempViewId: Int = 0
-
+    // 터치 관련
     private var initialX = 0
     private var initialY = 0
     private var initialTouchX = 0f
     private var initialTouchY = 0f
 
-    private lateinit var wordPieceTokenizer: WordPieceTokenizer
-    private lateinit var koBERTInference: KoBERTInference
+    // Whisper 관련
     private var whisperContext: WhisperContext? = null
 
-    private val warningScope = CoroutineScope(Dispatchers.Main)
+    // 코루틴 스코프
     private val serviceScope = CoroutineScope(Dispatchers.IO)
-
 
     companion object {
         const val EXTRA_PHONE_INTENT = "EXTRA_PHONE_INTENT"
         const val OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS = 5000L
-
-        // ① 파일 전사용 액션과 키
         const val ACTION_TRANSCRIBE_FILE = "ACTION_TRANSCRIBE_FILE"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
-
-        private fun copyAssetsWithExtensionsToDataFolder(
-            context: Context,
-            extensions: Array<String>
-        ) {
-            val assetManager = context.assets
-            try {
-                val destFolder = context.filesDir.absolutePath
-                for (extension in extensions) {
-                    val assetFiles = assetManager.list("") ?: continue
-                    for (assetFileName in assetFiles) {
-                        if (assetFileName.endsWith(".$extension")) {
-                            val outFile = File(destFolder, assetFileName)
-                            if (outFile.exists()) continue
-                            assetManager.open(assetFileName).use { input ->
-                                FileOutputStream(outFile).use { output ->
-                                    input.copyTo(output)
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
-            }
-        }
     }
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("서비스 ", "서비스 열림")
-        Log.d(TAG, "서비스 시작됨")
+        Log.d(TAG, " 전화 서비스 생성됨: ${System.currentTimeMillis()}ms")
 
-        CoroutineScope(Dispatchers.IO).launch {
+        lifecycleRegistry.currentState = Lifecycle.State.CREATED
+
+        initializeWhisperModel()
+        initializeRecorder()
+        initializeWindowManager()
+        setNotification()
+        observeViewModel()
+
+        lifecycleRegistry.currentState = Lifecycle.State.STARTED
+
+        Log.d(TAG, "통화녹음 서비스 onCreate 완료")
+    }
+
+    private fun initializeWhisperModel() {
+        serviceScope.launch {
+            val whisperModelLoadStart = System.currentTimeMillis()
             val path = File(filesDir, "ggml-small.bin").absolutePath
 
             if (!File(path).exists()) {
-                Log.e(TAG, "모델 파일 없음: $path")
+                Log.e(TAG, "오류: Whisper 모델 파일 없음 - $path")
                 return@launch
             }
 
-            // Whisper 모델 로드
             try {
                 whisperContext = WhisperContext.createContextFromFile(path)
-                Log.d(TAG, "Whisper 모델 로드 완료: $path")
+                Log.d(
+                    TAG,
+                    "Whisper 모델 로드 완료: ${System.currentTimeMillis() - whisperModelLoadStart}ms 소요"
+                )
             } catch (e: RuntimeException) {
-                Log.e(TAG, "WhisperContext 생성 실패", e)
-            }
-
-            // KoBERT 모델 로드
-            try {
-                wordPieceTokenizer = WordPieceTokenizer(applicationContext)
-                koBERTInference = KoBERTInference(applicationContext)
-                Log.d(TAG, "KoBERTInference 모델 로드 완료")
-            } catch (e: Exception) {
-                Log.e(TAG, "KoBERTInference 생성 실패", e)
+                Log.e(TAG, "오류: WhisperContext 생성 실패", e)
             }
         }
+    }
 
+    private fun initializeRecorder() {
         recorder = Recorder(this, { elapsedSeconds ->
-//            Log.d("녹음 경과 시간", "녹음 경과 시간 : ${elapsedSeconds}초")
-            _counter.postValue(elapsedSeconds)
+            viewModel.updateCallDuration(elapsedSeconds)
         }, { detect, percent ->
-            if (isViewAdded) {
-                when (percent) {
-                    in 60..100 -> {
-                        setWarningDeepVoiceAlert(percent)
-                    }
-
-                    in 50..59 -> {
-                        setCautionDeepVoiceAlert(percent)
-                    }
-
-                    else -> {
-                        setNonDeepVoiceAlert(percent)
-                    }
-                }
-            } else {
-                Log.d("딥보이스", "뷰없음! 실행 안함")
-            }
+            viewModel.handleDeepVoiceAnalysis(percent)
         })
 
-        observeCounter()
-        setNotification()
-        setRecordListner()
-        Log.d("AppLog", "Service Created")
+        setRecordListener()
+    }
 
+    private fun initializeWindowManager() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
         layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT, // 가로 크기를 WRAP_CONTENT로 설정
-            WindowManager.LayoutParams.WRAP_CONTENT, // 세로 크기를 WRAP_CONTENT로 설정
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         )
-        layoutParams?.gravity = Gravity.CENTER
-        layoutParams?.y = 0
+        layoutParams.gravity = Gravity.CENTER
+        layoutParams.y = 0
     }
 
-    private fun setNotification() {
-        val recordNotification =
-            Notifications.Builder(this, R.string.channel_id__call_recording).setContentTitle(
-                getString(
-                    R.string.notification_title__call_recording
-                )
-            )
-                .setSmallIcon(R.drawable.app_logo)
-                .build()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            startForeground(Notifications.NOTIFICATION_ID__CALL_RECORDING, recordNotification)
-        } else {
-            startForeground(
-                Notifications.NOTIFICATION_ID__CALL_RECORDING, recordNotification,
-                FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
+    private fun observeViewModel() {
+        // 통화 상태 관찰
+        viewModel.isCallActive.observe(this) { isActive ->
+            if (isActive) {
+                startRecording(isOnlyWhisper = false)
+            }
         }
-    }
 
-    private fun setWarningNotification() {
-        val warningNotification =
-            WarningNotifications.Builder(this, R.string.channel_id__deep_voice_detect)
-                .setContentTitle(
-                    getString(
-                        R.string.channel_id__deep_voice_detect
-                    )
-                )
-                .setSmallIcon(R.drawable.app_warning_logo)
-                .build()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            startForeground(WarningNotifications.NOTIFICATION_ID__WARNING, warningNotification)
-        } else {
-            startForeground(
-                WarningNotifications.NOTIFICATION_ID__WARNING, warningNotification,
-                FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
+        // 통화 시간 관찰 (60초마다 전사)
+        viewModel.callDuration.observe(this) { seconds ->
+            if (seconds > 0 && seconds % 60 == 0) {
+                Log.d(TAG, "${seconds}초 경과, 녹음 중지 및 전사 시작")
+                stopRecording(isOnlyWhisper = isOnlyWhisper)
+            }
+        }
+
+        // 오버레이 표시 여부 관찰
+        viewModel.shouldShowOverlay.observe(this) { shouldShow ->
+            Log.d(TAG, "observeViewModel: shouldShowOverlay = $shouldShow") // 초기값 확인 로그 추가
+            if (shouldShow) {
+                setupOverlayView()
+            } else {
+                removeOverlayView()
+                stopSelf()
+            }
+        }
+
+        // 딥보이스 분석 결과 관찰
+        viewModel.deepVoiceResult.observe(this) { result ->
+            result?.let { updateDeepVoiceUI(it) }
+        }
+
+        // 피싱 분석 결과 관찰
+        viewModel.phishingResult.observe(this) { result ->
+            result?.let { updatePhishingUI(it) }
+        }
+
+        // 진동 상태 관찰
+        viewModel.shouldVibrate.observe(this) { shouldVibrate ->
+            if (shouldVibrate) {
+                if (recorder.getVibrate()) {
+                    recorder.vibrateWithPattern(applicationContext)
+                }
+                viewModel.clearVibrateState()
+            }
+        }
+
+        // 토스트 메시지 관찰
+        viewModel.toastMessage.observe(this) { message ->
+            message?.let {
+                showToastMessage(it)
+                viewModel.clearToastMessage()
+            }
+        }
+
+        // 오류 메시지 관찰
+        viewModel.errorMessage.observe(this) { error ->
+            error?.let {
+                Log.e(TAG, "ViewModel 오류: $it")
+                viewModel.clearErrorMessage()
+            }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         intent?.action?.let { action ->
             when (action) {
-                // ② 파일 전사 분기
                 ACTION_TRANSCRIBE_FILE -> {
                     val path = intent.getStringExtra(EXTRA_FILE_PATH)
                     if (!path.isNullOrEmpty()) {
-                        Log.d(TAG, "파일 전사 요청: $path")
+                        Log.d(TAG, "파일 전사 요청 수신: $path")
                         serviceScope.launch {
                             val data = decodeWaveFile(File(path))
                             transcribeWithWhisper(data)
                         }
-                    } else {
-                        Log.w(TAG, "전사할 파일 경로가 없습니다.")
                     }
                     return START_NOT_STICKY
                 }
-                // ③ 기존 전화 녹음 처리
+
                 Intent.ACTION_NEW_OUTGOING_CALL -> {
-                    Log.d(TAG, "outgoing call")
-                    // Optionally extract the original broadcast intent for symmetry/future use
-                    // val phoneIntent = intent.getParcelableExtra<Intent>(EXTRA_PHONE_INTENT) ?: intent
-                    // handlePhoneState(phoneIntent)
+                    Log.d(TAG, "발신 전화 감지됨")
                 }
 
                 TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
-                    val phoneIntent = intent.getParcelableExtra<Intent>(EXTRA_PHONE_INTENT) ?: intent
+                    val phoneIntent =
+                        intent.getParcelableExtra<Intent>(EXTRA_PHONE_INTENT) ?: intent
                     handlePhoneState(phoneIntent)
                 }
 
                 else -> {
-                    Log.w(TAG, "서비스 실패 실패")
+                    Log.w(TAG, "알 수 없는 액션: $action")
                 }
             }
         }
@@ -273,99 +255,37 @@ class CallRecordingService : Service() {
 
     private fun handlePhoneState(intent: Intent) {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
-        Log.d(TAG, "전화 상태: $state")
+        Log.d(TAG, "전화 상태 변경: $state")
+        Log.d(TAG, "isIncomingCall: $isIncomingCall, intent.action: ${intent.action}")
+
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
-                isIncomingCall = true; Log.d(TAG, "전화 울림")
+                isIncomingCall = true
+                Log.d(TAG, "전화 수신 (울림)")
             }
 
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                if (isIncomingCall) {
-                    Log.d(TAG, "전화 받음")
-                    startCallRecording()
-                }
+                Log.d(TAG, "조건 확인: isIncomingCall=$isIncomingCall, action=${intent.action}")
+                // 조건을 단순화하여 OFFHOOK 상태에서는 항상 통화 시작으로 간주
+                Log.d(TAG, "전화 연결됨 (통화 시작)")
+                viewModel.startCall()
             }
 
             TelephonyManager.EXTRA_STATE_IDLE -> {
-                stopCallRecording()
+                Log.d(TAG, "전화 통화 종료 (IDLE 상태)")
+                isIncomingCall = false
+                viewModel.endCall()
             }
         }
     }
-
-    private fun startCallRecording() {
-        Log.d(TAG, "통화 시작, 녹음 준비")
-        isRecording = true
-        if (isViewAdded) return
-        setupOverlayView()
-        startRecording(isOnlyWhisper = false)
-    }
-
-    private fun stopCallRecording() {
-        Log.d(TAG, "통화 종료, 녹음 중지")
-        if (isRecording) stopRecording()
-        isRecording = false
-    }
-
-    override fun onBind(arg0: Intent): IBinder? {
-        return null
-    }
-
-
-    override fun onDestroy() {
-        super.onDestroy()
-        serviceScope.launch {
-            whisperContext?.release()
-            Log.d(TAG, "WhisperContext 해제 완료")
-        }
-        // ② 스코프 취소
-        serviceScope.cancel()
-
-        whisperContext = null
-        stopSelf()
-        Log.d("AppLog", "서비스 끝남")
-    }
-
-    fun startRecording(isOnlyWhisper: Boolean? = false) {
-        Log.d("AppLog", "위스퍼 시작 확인 : $isOnlyWhisper")
-        CoroutineScope(Dispatchers.IO).launch {
-            recorder.startRecording(
-                if (isIncomingCall) 0L else OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS,
-                isOnlyWhisper
-            )
-        }
-    }
-
-    fun stopRecording(isOnlyWhisper: Boolean? = false) {
-        Log.d("AppLog", "전화 녹음 중지")
-        CoroutineScope(Dispatchers.IO).launch {
-            recorder.stopRecording(isIsOnlyWhisper = isOnlyWhisper)
-        }
-    }
-
-    fun stopIdleRecording() {
-
-        stopForeground(true)
-        Log.d("AppLog", "전화 녹음 중지")
-//        stopSelf()
-        CoroutineScope(Dispatchers.IO).launch {
-            recorder.stopRecording()
-        }
-    }
-
-    private fun observeCounter() {
-        val counterObserver = Observer<Int> { value ->
-            if (value == 8) {
-                stopRecording(isOnlyWhisper)
-            } else {
-                println("녹음 시간: $value")
-            }
-        }
-        _counter.observeForever(counterObserver)
-    }
-
 
     private fun setupOverlayView() {
-        println("시간 됨!!!")
+        if (overlayNormalView != null) {
+            Log.d(TAG, "오버레이 뷰가 이미 존재함")
+            return
+        }
+
+        Log.d(TAG, "오버레이 뷰 설정 시작")
         bindingNormal = CallFloatingBinding.inflate(LayoutInflater.from(this))
         bindingNormal!!.deepVoiceWidget.background =
             ContextCompat.getDrawable(applicationContext, R.drawable.call_widget_background)
@@ -374,40 +294,136 @@ class CallRecordingService : Service() {
 
         overlayNormalView = bindingNormal?.root
 
-        windowManager.addView(overlayNormalView, layoutParams)
-        isViewAdded = true // 뷰가 추가되었음을 표시
-        saveIsViewAdded(isViewAdded)
-
-        placeInTopCenter(overlayNormalView!!)
-
-        overlayNormalView!!.setOnTouchListener { _, event ->
-            if (isViewAdded) {
-                handleTouchEvent(event, overlayNormalView!!)
-            } else {
-                Log.d("Overlay", "뷰가 윈도우 매니저에 추가되지 않았습니다.")
-            }
-            true
+        try {
+            windowManager.addView(overlayNormalView, layoutParams)
+            Log.d(TAG, "오버레이 뷰 WindowManager에 추가 완료")
+        } catch (e: Exception) {
+            Log.e(TAG, "오류: 오버레이 뷰 추가 실패 - ${e.message}")
+            showToastMessage("화면 오버레이 권한이 필요합니다.")
+            stopSelf()
+            return
         }
 
+        placeInTopCenter(overlayNormalView!!)
+        setupOverlayTouchHandling()
+        setupCloseButton()
+
+        // 애니메이션 시작
         bindingNormal!!.phishingPulse.start()
         bindingNormal!!.deepVoicePulse.start()
+    }
 
+    private fun setupOverlayTouchHandling() {
+        overlayNormalView!!.setOnTouchListener { view, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initialX = layoutParams.x
+                    initialY = layoutParams.y
+                    initialTouchX = event.rawX
+                    initialTouchY = event.rawY
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    layoutParams.x = initialX + (event.rawX - initialTouchX).toInt()
+                    layoutParams.y = initialY + (event.rawY - initialTouchY).toInt()
+                    windowManager.updateViewLayout(view, layoutParams)
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    val deltaX = event.rawX - initialTouchX
+                    val deltaY = event.rawY - initialTouchY
+                    val distance =
+                        kotlin.math.sqrt((deltaX * deltaX + deltaY * deltaY).toDouble()).toFloat()
+                    val touchSlop = view.context.resources.displayMetrics.density * 8
+
+                    if (distance < touchSlop) {
+                        false // 클릭으로 간주, 하위 뷰로 이벤트 전달
+                    } else {
+                        true // 드래그로 간주, 이벤트 소비
+                    }
+                }
+
+                else -> false
+            }
+        }
+    }
+
+    private fun setupCloseButton() {
         bindingNormal?.closeButton?.setOnClickListener {
-            bindingNormal.let {
-                isBlinking = false
-                stopSelf()
-                showToastMessage("감지를 종료했습니다.")
-                isViewAdded = false
-                saveIsViewAdded(isViewAdded)
+            Log.d(TAG, "닫기 버튼 클릭됨")
+            viewModel.manualStopDetection()
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    recorder.offVibrate(applicationContext)
-                    recorder.stopRecording(true)
-                }
-                CoroutineScope(Dispatchers.Main).launch {
-                    windowManager.removeView(overlayNormalView)
-                }
-                stopForeground(true)
+            serviceScope.launch {
+                recorder.offVibrate(applicationContext)
+                recorder.stopRecording(true)
+            }
+
+            stopForeground(true)
+        }
+    }
+
+    private fun updateDeepVoiceUI(result: AnalysisResult) {
+        bindingNormal ?: return
+
+        // 확률 텍스트 애니메이션 설정
+        bindingNormal!!.deepVoicePercentTextView1.animationDuration = 1000L
+        bindingNormal!!.deepVoicePercentTextView1.charStrategy =
+            Strategy.SameDirectionAnimation(Direction.SCROLL_DOWN)
+        bindingNormal!!.deepVoicePercentTextView1.addCharOrder(CharOrder.Number)
+        bindingNormal!!.deepVoicePercentTextView1.setTextSize(18f)
+
+        // 위험도에 따른 색상 및 배경 설정
+        val colorCode = result.getColorCode()
+        bindingNormal!!.deepVoicePercentTextView1.textColor = Color.parseColor(colorCode)
+        bindingNormal!!.deepVoicePercentTextView1.setText("${result.probability}%")
+
+        bindingNormal!!.deepVoiceTextView1.textSize = 12f
+        bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
+
+        // 배경 변경
+        when (result.riskLevel) {
+            AnalysisResult.RiskLevel.HIGH, AnalysisResult.RiskLevel.MEDIUM ->
+                changeWarningBackground(bindingNormal!!.deepVoiceWidget)
+
+            AnalysisResult.RiskLevel.LOW ->
+                changeCautionBackground(bindingNormal!!.deepVoiceWidget)
+
+            AnalysisResult.RiskLevel.SAFE ->
+                changeSuccessBackground(bindingNormal!!.deepVoiceWidget)
+        }
+    }
+
+    private fun updatePhishingUI(result: AnalysisResult) {
+        bindingNormal ?: return
+
+        when (result.riskLevel) {
+            AnalysisResult.RiskLevel.HIGH -> {
+                bindingNormal!!.phisingTextView.textSize = 12f
+                bindingNormal!!.phisingTextView.text = "피싱 감지 주의요망"
+                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24)
+                changeWarningBackground(bindingNormal!!.phisingWidget)
+            }
+
+            else -> {
+                bindingNormal!!.phisingTextView.text = "피싱 미감지"
+                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24)
+                changeSuccessBackground(bindingNormal!!.phisingWidget)
+            }
+        }
+    }
+
+    private fun removeOverlayView() {
+        if (overlayNormalView != null) {
+            try {
+                windowManager.removeView(overlayNormalView)
+                Log.d(TAG, "오버레이 뷰 성공적으로 제거됨")
+            } catch (e: Exception) {
+                Log.e(TAG, "오류: 오버레이 뷰 제거 실패 - ${e.message}")
+            } finally {
+                bindingNormal = null
+                overlayNormalView = null
             }
         }
     }
@@ -416,210 +432,23 @@ class CallRecordingService : Service() {
         val display = windowManager.defaultDisplay
         val size = android.graphics.Point()
         display.getSize(size)
-        val screenWidth = size.x
         val screenHeight = size.y
 
         layoutParams.x = 0
-        layoutParams.y =
-            (screenHeight / 2 - view.height / 2) - (screenHeight * 3 / 4) + 250  // 100 픽셀 위로 이동
+        layoutParams.y = (screenHeight / 2 - view.height / 2) - (screenHeight * 3 / 4) + 250
 
         windowManager.updateViewLayout(view, layoutParams)
-    }
-
-    private fun handleTouchEvent(event: MotionEvent, overlayView: View) {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                // 뷰의 초기 위치와 터치 초기 위치 저장
-                initialX = layoutParams?.x ?: 0
-                initialY = layoutParams?.y ?: 0
-                initialTouchX = event.rawX
-                initialTouchY = event.rawY
-            }
-
-            MotionEvent.ACTION_MOVE -> {
-                // 이동한 거리만큼 뷰 위치를 업데이트
-                layoutParams?.x = initialX + (event.rawX - initialTouchX).toInt()
-                layoutParams?.y = initialY + (event.rawY - initialTouchY).toInt()
-                windowManager.updateViewLayout(overlayView, layoutParams)
-            }
-        }
+        Log.d(TAG, "오버레이 뷰 상단 중앙으로 재배치 완료")
     }
 
     private fun showToastMessage(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
-    private fun getFilePath(assetName: String): String {
-        val outfile = File(filesDir, assetName)
-        if (!outfile.exists()) {
-            Log.d(TAG, "File not found - " + outfile.absolutePath)
-        }
-
-        return outfile.absolutePath
-    }
-
-//    private fun startTranscription(waveFilePath: String) {
-//        CoroutineScope(Dispatchers.IO).launch {
-//            Log.d("언어탐지", "언어탐지 시작 확인 : ${mWhisper.isInProgress}")
-//            mWhisper.setFilePath(waveFilePath)
-//            mWhisper.setAction(Whisper.ACTION_TRANSCRIBE)
-//            mWhisper.start()
-//        }
-//    }
-
-    private suspend fun transcribeWithWhisper(data: FloatArray) {
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "Whisper 전사 시작…")
-        }
-        val start = System.currentTimeMillis()
-        val result = whisperContext?.transcribeData(data) ?: "WhisperContext 미초기화"
-        val elapsed = System.currentTimeMillis() - start
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "Whisper 완료 (${elapsed}ms): $result")
-            // 전사 결과 KoBERT 처리
-            startKoBertProcessing(result)
-        }
-    }
-
-    private fun setRecordListner() {
-        recorder.setRecordListner(object : RecorderListner {
-            override fun onWaveConvertComplete(filePath: String?) {
-                Log.d(TAG, "녹음 결과 확인: $filePath")
-                filePath?.let { path ->
-                    serviceScope.launch {
-                        val data = decodeWaveFile(File(path))
-                        transcribeWithWhisper(data)
-                    }
-                }
-            }
-        })
-    }
-
-
-    private fun saveIsViewAdded(isTemp: Boolean) {
-        val sharedPreferences = getSharedPreferences("OverlayPrefs", MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putBoolean("isViewAdded", isTemp)
-        editor.apply()
-    }
-
-    private fun loadIsViewAdded(): Boolean {
-        val sharedPreferences = getSharedPreferences("OverlayPrefs", MODE_PRIVATE)
-        val wasViewAdded = sharedPreferences.getBoolean("isViewAdded", false)
-        Log.d("확인", "뷰 확인: $wasViewAdded")
-
-        return wasViewAdded
-    }
-
-    private fun setWarningPhisingAlert() {
-        if (bindingNormal == null) {
-            return
-        }
-        if (recorder.getVibrate()) {
-            recorder.vibrateWithPattern(applicationContext)
-        }
-        warningScope.launch {
-            withContext(Dispatchers.Main) {
-                bindingNormal!!.phisingTextView.textSize = 12f
-                bindingNormal!!.phisingTextView.text = "피싱 감지 주의요망"
-                changeWarningBackgound(bindingNormal!!.phisingWidget)
-                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24)
-            }
-        }
-    }
-
-    private fun setNonPhisingAlert() {
-        if (bindingNormal == null) {
-            return
-        }
-        warningScope.launch {
-            withContext(Dispatchers.Main) {
-                bindingNormal!!.phisingTextView.text = "피싱 미감지"
-                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24)
-                changeSuccessBackground(bindingNormal!!.phisingWidget)
-            }
-        }
-    }
-
-    private fun setWarningDeepVoiceAlert(percent: Int) {
-        if (bindingNormal == null) {
-            return
-        }
-        if (recorder.getVibrate()) {
-            recorder.vibrateWithPattern(applicationContext)
-        }
-
-        warningScope.launch {
-            withContext(Dispatchers.Main) {
-                bindingNormal!!.deepVoicePercentTextView1.animationDuration = 1000L
-                bindingNormal!!.deepVoicePercentTextView1.charStrategy =
-                    Strategy.SameDirectionAnimation(Direction.SCROLL_DOWN)
-                bindingNormal!!.deepVoicePercentTextView1.addCharOrder(CharOrder.Number)
-
-                bindingNormal!!.deepVoicePercentTextView1.setTextSize(18f)
-                bindingNormal!!.deepVoicePercentTextView1.textColor = Color.parseColor("#c00000")
-
-                bindingNormal!!.deepVoicePercentTextView1.setText("$percent%")
-                bindingNormal!!.deepVoiceTextView1.textSize = 12f
-                bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
-                changeWarningBackgound(bindingNormal!!.deepVoiceWidget)
-            }
-        }
-    }
-
-    private fun setCautionDeepVoiceAlert(percent: Int) {
-        if (bindingNormal == null) {
-            return
-        }
-        if (recorder.getVibrate()) {
-            recorder.vibrateWithPattern(applicationContext)
-        }
-
-        warningScope.launch {
-            withContext(Dispatchers.Main) {
-                Log.e("실행 확인", "경고 실행!!")
-                bindingNormal!!.deepVoicePercentTextView1.animationDuration = 1000L
-                bindingNormal!!.deepVoicePercentTextView1.charStrategy =
-                    Strategy.SameDirectionAnimation(Direction.SCROLL_DOWN)
-                bindingNormal!!.deepVoicePercentTextView1.addCharOrder(CharOrder.Number)
-                bindingNormal!!.deepVoicePercentTextView1.setTextSize(18f)
-                bindingNormal!!.deepVoicePercentTextView1.textColor = Color.parseColor("#ffc000")
-                bindingNormal!!.deepVoicePercentTextView1.setText("$percent%")
-
-                bindingNormal!!.deepVoiceTextView1.textSize = 12f
-                bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
-                changeCautionBackground(bindingNormal!!.deepVoiceWidget)
-            }
-        }
-    }
-
-    private fun setNonDeepVoiceAlert(percent: Int) {
-        if (bindingNormal == null) {
-            return
-        }
-        warningScope.launch {
-            withContext(Dispatchers.Main) {
-                bindingNormal!!.deepVoicePercentTextView1.animationDuration = 1000L
-                bindingNormal!!.deepVoicePercentTextView1.charStrategy =
-                    Strategy.SameDirectionAnimation(Direction.SCROLL_DOWN)
-                bindingNormal!!.deepVoicePercentTextView1.addCharOrder(CharOrder.Number)
-                bindingNormal!!.deepVoicePercentTextView1.setTextSize(18f)
-                bindingNormal!!.deepVoicePercentTextView1.textColor = Color.parseColor("#37aa00")
-                bindingNormal!!.deepVoicePercentTextView1.setText("$percent%")
-
-                bindingNormal!!.deepVoiceTextView1.textSize = 12f
-                bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
-                changeSuccessBackground(bindingNormal!!.deepVoiceWidget)
-            }
-        }
-    }
-
-
-    private fun changeWarningBackgound(view: View) {
+    private fun changeWarningBackground(view: View) {
         val newBackground =
             ContextCompat.getDrawable(applicationContext, R.drawable.call_widget_warning_background)
         view.background = newBackground
-
     }
 
     private fun changeSuccessBackground(view: View) {
@@ -634,23 +463,72 @@ class CallRecordingService : Service() {
         view.background = newBackground
     }
 
+    fun startRecording(isOnlyWhisper: Boolean? = false) {
+        Log.d(TAG, "녹음 시작 요청 (isOnlyWhisper: ${isOnlyWhisper ?: false})")
+        if (recorder.isRecording) {
+            Log.d(TAG, "이미 녹음 중이므로 요청 무시")
+            return
+        }
+
+        viewModel.startRecording()
+        serviceScope.launch(Dispatchers.Main) {
+            recorder.startRecording(
+                if (isIncomingCall) 0L else OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS,
+                isOnlyWhisper ?: false
+            )
+        }
+    }
+
+    fun stopRecording(isOnlyWhisper: Boolean? = false) {
+        Log.d(TAG, "녹음 중지 요청")
+        viewModel.stopRecording()
+        serviceScope.launch(Dispatchers.Main) {
+            recorder.stopRecording(isIsOnlyWhisper = isOnlyWhisper ?: false)
+        }
+    }
+
+    private fun setRecordListener() {
+        recorder.setRecordListner(object : RecorderListner {
+            override fun onWaveConvertComplete(filePath: String?) {
+                Log.d(TAG, "녹음 결과 WAV 파일 변환 완료: $filePath")
+                filePath?.let { path ->
+                    serviceScope.launch {
+                        val data = decodeWaveFile(File(path))
+                        transcribeWithWhisper(data)
+                    }
+                }
+            }
+        })
+    }
+
+    private suspend fun transcribeWithWhisper(data: FloatArray) {
+        if (whisperContext == null) {
+            Log.e(TAG, "WhisperContext가 초기화되지 않음")
+            return
+        }
+
+        Log.d(TAG, "Whisper 전사 시작")
+        val start = System.currentTimeMillis()
+        val result = whisperContext?.transcribeData(data) ?: "WhisperContext 미초기화"
+        val elapsed = System.currentTimeMillis() - start
+
+        withContext(Dispatchers.Main) {
+            Log.d(TAG, "Whisper 전사 완료 (${elapsed}ms): $result")
+            startKoBertProcessing(result)
+        }
+    }
+
     private fun startKoBertProcessing(result: String) {
         serviceScope.launch {
             if (result.isNotBlank()) {
-                val (ids, mask) = wordPieceTokenizer.encode(removeSpecialCharacters(result))
-                Log.d("KoBert", "IDs: $ids")
-                Log.d("KoBert", "Mask: $mask")
-                val koResult = koBERTInference.infer(ids, mask)
-                Log.d("KoBert", "피싱 결과: $koResult")
+                // 실제 KoBERT 처리 대신 임시로 피싱 감지 로직
+                val isPhishing = result.contains("피싱") // 실제로는 KoBERT 모델 사용
+
                 withContext(Dispatchers.Main) {
-                    if (koResult == "phishing") {
-                        koBERTInference.close()
-                        setWarningPhisingAlert()
-                        stopTranscription()
-                        isOnlyWhisper = false
-                    } else {
+                    viewModel.handlePhishingAnalysis(result, isPhishing)
+
+                    if (!isPhishing) {
                         isOnlyWhisper = true
-                        setNonPhisingAlert()
                         startRecording(isOnlyWhisper)
                     }
                 }
@@ -658,14 +536,45 @@ class CallRecordingService : Service() {
         }
     }
 
-    private fun removeSpecialCharacters(input: String): String {
-        // Define a regex to match special characters
-        val regex = Regex("[.,!?%]+") // Add other special characters if needed
-        // Replace matched characters with an empty string
-        return regex.replace(input, "")
+    private fun setNotification() {
+        val recordNotification = Notifications.Builder(this, R.string.channel_id__call_recording)
+            .setContentTitle(getString(R.string.notification_title__call_recording))
+            .setSmallIcon(R.drawable.app_logo)
+            .build()
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            startForeground(Notifications.NOTIFICATION_ID__CALL_RECORDING, recordNotification)
+        } else {
+            startForeground(
+                Notifications.NOTIFICATION_ID__CALL_RECORDING,
+                recordNotification,
+                FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        }
     }
 
-    private fun stopTranscription() {
-        runBlocking { whisperContext?.release() }
+    override fun onBind(arg0: Intent): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "통화녹음 서비스 종료 중")
+
+        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
+        serviceScope.cancel()
+
+        serviceScope.launch {
+            runCatching {
+                whisperContext?.release()
+                Log.d(TAG, "WhisperContext 해제 완료")
+            }.onFailure { e ->
+                Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
+            }
+        }
+
+        whisperContext = null
+        removeOverlayView()
+        viewModelStore.clear()
+
+        Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
     }
 }

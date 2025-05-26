@@ -5,9 +5,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.media.AudioFormat
-import android.media.AudioRecord
-import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,7 +12,8 @@ import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
 import android.view.LayoutInflater
-import android.view.accessibility.AccessibilityManager
+import android.view.View.GONE
+import android.view.View.VISIBLE
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -28,98 +26,32 @@ import com.denzcoskun.imageslider.models.SlideModel
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityMainBinding
 import com.museblossom.callguardai.databinding.PermissionDialogBinding
+import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.ui.viewmodel.MainViewModel
 import com.museblossom.callguardai.util.etc.MyAccessibilityService
-import com.museblossom.callguardai.util.recorder.Recorder
-
-import com.museblossom.deepvoice.util.AudioSource
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import dagger.hilt.android.AndroidEntryPoint
 
+/**
+ * 메인 액티비티 - MVVM 패턴 적용
+ * 책임:
+ * - UI 표시 및 업데이트
+ * - 사용자 입력 이벤트 처리
+ * - ViewModel과의 데이터 바인딩
+ * - 안드로이드 시스템 API 호출 (권한, 설정 등)
+ */
+@AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
-    private lateinit var recorder: Recorder
-    private lateinit var binding: ActivityMainBinding
-    private val viewModel: MainViewModel by viewModels()
-    private var dialogPlus: DialogPlus? = null
-    private lateinit var viewPager: ViewPager
-    private var isPause = false
-    private var currentIndex = 0
-
-    private var audioRecord: AudioRecord? = null
-    private var lastText: String = ""
-    private var recordingThread: Thread? = null
-
-    private val audioSource = MediaRecorder.AudioSource.MIC
-    private val sampleRateInHz = 16000
-    private val channelConfig = AudioFormat.CHANNEL_IN_MONO
-    private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-
-
-    override fun onResume() {
-        Log.i("시점 확인", "리줌,메인")
-        if (isPause) {
-            checkServicePermisson()
-        }
-//
-        super.onResume()
-    }
-
-    override fun onPause() {
-        Log.i("시점 확인", "퍼즈,메인")
-        isPause = true
-        super.onPause()
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        Log.i("시점 확인", "크리,메인")
-        binding =
-            ActivityMainBinding.inflate(LayoutInflater.from(this)).also { setContentView(it.root) }
-
-        viewModel.isServicePermission.observe(this, Observer { value ->
-            // value가 변경될 때마다 호출됩니다.
-            if (value == false) {
-                binding.serviceOnText.text = "앱 서비스 \n동작안함!"
-                Log.i("시점 확인", "권한 확인")
-                showAccessibilityDialog(this@MainActivity)
-            } else {
-                dialogPlus.let {
-                    dialogPlus?.dismiss()
-                }
-                binding.serviceOnText.text = "앱 서비스\n정상작동중!"
-            }
-        })
-
-        checkServicePermisson()
-        Recorder.setSavedAudioSource(this@MainActivity, AudioSource.VOICE_RECOGNITION)
-
-        val deviceInfo =
-            "${Build.MODEL};${Build.BRAND};${Build.DISPLAY};${Build.DEVICE};${Build.BOARD};${Build.HARDWARE};${Build.MANUFACTURER};${Build.ID}" +
-                    ";${Build.PRODUCT};${Build.VERSION.RELEASE};${Build.VERSION.SDK_INT};${Build.VERSION.INCREMENTAL};${Build.VERSION.CODENAME}"
-        Log.d("디바이스 정보", deviceInfo)
-    }
-
-    private fun requestAccessibilityPermission() {
-        var intent = Intent("com.samsung.accessibility.installed_service")
-        if (intent.resolveActivity(packageManager) == null) {
-            intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        }
-        val extraFragmentArgKey = ":settings:fragment_args_key"
-        val extraShowFragmentArguments = ":settings:show_fragment_args"
-        val bundle = Bundle()
-        val showArgs: String = "${packageName}/${MyAccessibilityService::class.java.name}"
-        bundle.putString(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraShowFragmentArguments, bundle)
-        try {
-            startActivity(intent)
-        } catch (e: Exception) {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY))
-        }
-    }
 
     companion object {
+        private const val TAG = "MainActivity"
+
         @SuppressLint("MissingPermission")
         @JvmStatic
         fun dialPhone(context: Context, phone: String) {
@@ -132,43 +64,407 @@ class MainActivity : AppCompatActivity() {
             try {
                 val packageInfo =
                     pm.getPackageInfo(context.packageName, PackageManager.GET_PERMISSIONS)
-                return packageInfo.requestedPermissions ?: return null
+                return packageInfo.requestedPermissions
             } catch (ignored: PackageManager.NameNotFoundException) {
-                //we should always find current app
+                // we should always find current app
             }
             throw RuntimeException("cannot find current app?!")
         }
     }
 
-    fun excludeFromBatteryOptimization(context: Context) {
-        // Android 6.0 (Marshmallow) 이상에서 배터리 최적화 제외 가능
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val packageName = context.packageName
-            val intent = Intent()
-            val powerManager =
-                context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
-            Log.e("확인", "배터리 최적화")
-            // 앱이 이미 배터리 최적화에서 제외되어 있는지 확인
-            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
-                intent.action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                intent.data = Uri.parse("package:$packageName")
-                try {
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    Log.e("확인", "배터리 최적화11")
-                    Toast.makeText(context, "배터리 최적화 설정 화면을 열 수 없습니다.", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                Log.e("확인", "배터리 최적화 Ok")
-                Toast.makeText(context, "앱이 이미 배터리 최적화에서 제외되어 있습니다.", Toast.LENGTH_SHORT).show()
-            }
-        } else {
-            Log.e("확인", "배터리 최적화22")
-            Toast.makeText(context, "Android 6.0 이상에서만 지원됩니다.", Toast.LENGTH_SHORT).show()
+    // View Binding
+    private lateinit var binding: ActivityMainBinding
+
+    // ViewModel - 단일 데이터 소스
+    private val viewModel: MainViewModel by viewModels()
+
+    // UI 상태 변수들
+    private var dialogPlus: DialogPlus? = null
+    private lateinit var viewPager: ViewPager
+    private var isPause = false
+    private var currentIndex = 0
+
+    // === Activity Lifecycle ===
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        Log.d(TAG, "onCreate 호출")
+
+        initializeUI()
+        observeViewModel()
+        checkInitialPermissions()
+        logDeviceInfo()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "onResume 호출")
+
+        if (isPause) {
+            checkAccessibilityPermission()
+            viewModel.checkNetworkStatus()
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause 호출")
+        isPause = true
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        Log.d(TAG, "onDestroy 호출")
+
+        // 다이얼로그 정리
+        dialogPlus?.dismiss()
+        dialogPlus = null
+    }
+
+    // === UI Initialization ===
+
+    /**
+     * UI 초기화
+     * 책임: 레이아웃 설정, 클릭 리스너 등록
+     */
+    private fun initializeUI() {
+        binding = ActivityMainBinding.inflate(LayoutInflater.from(this))
+        setContentView(binding.root)
+
+        setupClickListeners()
+        setupInitialUI()
+    }
+
+    /**
+     * 클릭 리스너 설정
+     */
+    private fun setupClickListeners() {
+        binding.testBtn.setOnClickListener {
+            handleTestButtonClick()
+        }
+
+        // 필요한 경우 다른 버튼들의 클릭 리스너 추가
+    }
+
+    /**
+     * 초기 UI 상태 설정
+     */
+    private fun setupInitialUI() {
+        // 초기 UI 상태 설정
+        binding.serviceOnText.text = "앱 상태 확인 중..."
+
+        // 테스트 버튼 일시적으로 숨김 (필요에 따라 표시)
+        binding.testBtn.visibility = GONE
+    }
+
+    // === ViewModel Observation ===
+
+    /**
+     * ViewModel 관찰자 설정
+     * 책임: 데이터 변화에 따른 UI 업데이트
+     */
+    private fun observeViewModel() {
+        observeUiState()
+        observePermissionState()
+        observeAnalysisResults()
+        observeNetworkState()
+        observeLoadingState()
+        observeErrorState()
+        observeRecordingState()
+    }
+
+    /**
+     * UI 상태 관찰
+     */
+    private fun observeUiState() {
+        viewModel.uiState.observe(this, Observer { uiState ->
+            handleUiStateChange(uiState)
+        })
+    }
+
+    /**
+     * 권한 상태 관찰
+     */
+    private fun observePermissionState() {
+        viewModel.isServicePermission.observe(this, Observer { hasPermission ->
+            updateServiceStatusUI(hasPermission)
+        })
+    }
+
+    /**
+     * 분석 결과 관찰
+     */
+    private fun observeAnalysisResults() {
+        // 딥보이스 분석 결과
+        viewModel.deepVoiceAnalysis.observe(this, Observer { result: AnalysisResult? ->
+            result?.let { analysisResult ->
+                showAnalysisResult("딥보이스", analysisResult)
+            }
+        })
+
+        // 피싱 분석 결과
+        viewModel.phishingAnalysis.observe(this, Observer { result: AnalysisResult? ->
+            result?.let { analysisResult ->
+                showAnalysisResult("피싱", analysisResult)
+            }
+        })
+    }
+
+    /**
+     * 네트워크 상태 관찰
+     */
+    private fun observeNetworkState() {
+        viewModel.isNetworkAvailable.observe(this, Observer { isAvailable ->
+            updateNetworkStatusUI(isAvailable)
+        })
+    }
+
+    /**
+     * 로딩 상태 관찰
+     */
+    private fun observeLoadingState() {
+        viewModel.isLoading.observe(this, Observer { isLoading ->
+            updateLoadingUI(isLoading)
+        })
+    }
+
+    /**
+     * 오류 상태 관찰
+     */
+    private fun observeErrorState() {
+        viewModel.errorMessage.observe(this, Observer { errorMessage ->
+            errorMessage?.let {
+                showErrorMessage(it)
+                viewModel.clearErrorMessage()
+            }
+        })
+    }
+
+    /**
+     * 녹음 상태 관찰
+     */
+    private fun observeRecordingState() {
+        viewModel.isRecording.observe(this, Observer { isRecording: Boolean ->
+            updateRecordingUI(isRecording)
+        })
+
+        viewModel.callDuration.observe(this, Observer { duration: Int ->
+            updateCallDurationUI(duration)
+        })
+    }
+
+    // === UI Update Methods ===
+
+    /**
+     * UI 상태 변경 처리
+     */
+    private fun handleUiStateChange(uiState: MainViewModel.UiState) {
+        Log.d(TAG, "UI 상태 변경: $uiState")
+
+        when (uiState) {
+            MainViewModel.UiState.IDLE -> {
+                // 초기 상태
+            }
+            MainViewModel.UiState.PERMISSION_REQUIRED -> {
+                // 권한 필요 상태는 별도 관찰자에서 처리
+            }
+            MainViewModel.UiState.READY -> {
+                hideProgressIndicators()
+            }
+            MainViewModel.UiState.RECORDING -> {
+                // 녹음 상태는 별도 관찰자에서 처리
+            }
+            MainViewModel.UiState.ANALYZING -> {
+                showAnalyzingUI()
+            }
+            MainViewModel.UiState.SAFE_DETECTED -> {
+                showSafeStatusUI()
+            }
+            MainViewModel.UiState.WARNING_DETECTED -> {
+                showWarningStatusUI()
+            }
+            MainViewModel.UiState.HIGH_RISK_DETECTED -> {
+                showHighRiskStatusUI()
+            }
+            MainViewModel.UiState.NETWORK_ERROR -> {
+                showNetworkErrorUI()
+            }
+            MainViewModel.UiState.ERROR -> {
+                showErrorStatusUI()
+            }
+        }
+    }
+
+    /**
+     * 서비스 상태 UI 업데이트
+     */
+    private fun updateServiceStatusUI(hasPermission: Boolean) {
+        if (hasPermission) {
+            binding.serviceOnText.text = "앱 서비스\n정상작동중!"
+            dismissPermissionDialog()
+            Log.d(TAG, "접근성 권한 있음 - 정상 작동")
+        } else {
+            binding.serviceOnText.text = "앱 서비스\n동작안함!"
+            showAccessibilityDialog()
+            Log.d(TAG, "접근성 권한 없음 - 다이얼로그 표시")
+        }
+    }
+
+    /**
+     * 네트워크 상태 UI 업데이트
+     */
+    private fun updateNetworkStatusUI(isAvailable: Boolean) {
+        // 필요에 따라 네트워크 상태 표시 UI 추가
+        Log.d(TAG, "네트워크 상태 UI 업데이트: ${if (isAvailable) "연결됨" else "연결 안됨"}")
+    }
+
+    /**
+     * 로딩 UI 업데이트
+     */
+    private fun updateLoadingUI(isLoading: Boolean) {
+        // 로딩 인디케이터 표시/숨김
+        // binding.progressBar.visibility = if (isLoading) VISIBLE else GONE
+        Log.d(TAG, "로딩 상태: $isLoading")
+    }
+
+    /**
+     * 녹음 UI 업데이트
+     */
+    private fun updateRecordingUI(isRecording: Boolean) {
+        // 녹음 상태 표시
+        Log.d(TAG, "녹음 상태: $isRecording")
+    }
+
+    /**
+     * 통화 시간 UI 업데이트
+     */
+    private fun updateCallDurationUI(duration: Int) {
+        // 통화 시간 표시
+        Log.d(TAG, "통화 시간: ${duration}초")
+    }
+
+    /**
+     * 분석 중 UI 표시
+     */
+    private fun showAnalyzingUI() {
+        // 분석 중 상태 표시
+        Log.d(TAG, "분석 중 UI 표시")
+    }
+
+    /**
+     * 안전 상태 UI 표시
+     */
+    private fun showSafeStatusUI() {
+        // 안전 상태 표시
+        Log.d(TAG, "안전 상태 UI 표시")
+    }
+
+    /**
+     * 경고 상태 UI 표시
+     */
+    private fun showWarningStatusUI() {
+        // 경고 상태 표시
+        Log.d(TAG, "경고 상태 UI 표시")
+    }
+
+    /**
+     * 높은 위험 상태 UI 표시
+     */
+    private fun showHighRiskStatusUI() {
+        // 높은 위험 상태 표시
+        Log.d(TAG, "높은 위험 상태 UI 표시")
+    }
+
+    /**
+     * 네트워크 오류 UI 표시
+     */
+    private fun showNetworkErrorUI() {
+        showToast("네트워크 연결을 확인해주세요")
+    }
+
+    /**
+     * 오류 상태 UI 표시
+     */
+    private fun showErrorStatusUI() {
+        // 일반 오류 상태 표시
+        Log.d(TAG, "오류 상태 UI 표시")
+    }
+
+    /**
+     * 진행 표시기 숨김
+     */
+    private fun hideProgressIndicators() {
+        // 모든 진행 표시기 숨김
+        Log.d(TAG, "진행 표시기 숨김")
+    }
+
+    // === Event Handlers ===
+
+    /**
+     * 테스트 버튼 클릭 처리
+     */
+    private fun handleTestButtonClick() {
+        // 테스트 기능 - 실제 구현 필요
+        showToast("테스트 기능은 현재 개발 중입니다")
+        Log.d(TAG, "테스트 버튼 클릭")
+    }
+
+    // === Analysis Results Display ===
+
+    /**
+     * 분석 결과 표시
+     */
+    private fun showAnalysisResult(type: String, result: AnalysisResult) {
+        val message = buildString {
+            append("$type 분석 결과\n")
+            append("상태: ${result.getStatusMessage()}\n")
+            append("확률: ${result.probability}%\n")
+            append("권장사항: ${result.recommendation}")
+        }
+
+        showToast(message)
+        Log.d(TAG, "$type 분석 결과: $result")
+    }
+
+    /**
+     * 오류 메시지 표시
+     */
+    private fun showErrorMessage(message: String) {
+        showToast("오류: $message")
+        Log.e(TAG, "오류 메시지: $message")
+    }
+
+    /**
+     * 토스트 메시지 표시
+     */
+    private fun showToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    // === Permission Management ===
+
+    /**
+     * 초기 권한 확인
+     */
+    private fun checkInitialPermissions() {
+        checkAccessibilityPermission()
+    }
+
+    /**
+     * 접근성 권한 확인
+     */
+    private fun checkAccessibilityPermission() {
+        val hasPermission = isAccessibilityServiceEnabled(
+            applicationContext,
+            MyAccessibilityService::class.java
+        )
+        Log.d(TAG, "접근성 서비스 권한 확인: $hasPermission")
+        viewModel.setServicePermission(hasPermission)
+    }
+
+    /**
+     * 접근성 서비스 활성화 여부 확인
+     */
     private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
         val enabledServices = Settings.Secure.getString(
             context.contentResolver,
@@ -190,56 +486,14 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    private fun openAccessibilitySettings(context: Context) {
-        var intent = Intent("com.samsung.accessibility.installed_service")
-        if (intent.resolveActivity(packageManager) == null) {
-            intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS,
-                Uri.parse("package:$packageName"))
-        }
-        val extraFragmentArgKey = ":settings:fragment_args_key"
-        val extraShowFragmentArguments = ":settings:show_fragment_args"
-        val bundle = Bundle()
-        val showArgs: String = "${packageName}/${MyAccessibilityService::class.java.name}"
-        bundle.putString(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraShowFragmentArguments, bundle)
-        try {
-            Log.i("진입 확인","진입1")
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.i("진입 확인","진입2 : $e")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY))
-        }
-    }
+    // === Dialog Management ===
 
-    private fun checkServicePermisson() {
-        Log.e(
-            "권한 확인 메인",
-            "${
-                isAccessibilityServiceEnabled(
-                    applicationContext,
-                    MyAccessibilityService::class.java
-                )
-            }"
-        )
-        if (!isAccessibilityServiceEnabled(
-                applicationContext,
-                MyAccessibilityService::class.java
-            )
-        ) {
-            viewModel.setBoolean(false)
-        } else {
-            viewModel.setBoolean(true)
-        }
-    }
-
-    private fun showAccessibilityDialog(context: Context) {
-        if(dialogPlus != null){
-            dialogPlus = null
-            Log.i("위치 ","됨? 다이얼로그 있")
-        }else{
-            Log.i("위치 ","됨? 다이얼로그 없")
-        }
+    /**
+     * 접근성 권한 다이얼로그 표시
+     */
+    private fun showAccessibilityDialog() {
+        // 기존 다이얼로그가 있다면 제거
+        dismissPermissionDialog()
 
         val customView = PermissionDialogBinding.inflate(layoutInflater)
         val viewHolder = ViewHolder(customView.root)
@@ -247,7 +501,7 @@ class MainActivity : AppCompatActivity() {
         val originalStatusBarColor = window.statusBarColor
         window.statusBarColor = ContextCompat.getColor(this, R.color.dialogplus_black_overlay)
 
-        dialogPlus = DialogPlus.newDialog(this@MainActivity)
+        dialogPlus = DialogPlus.newDialog(this)
             .setContentBackgroundResource(R.drawable.dialog_round)
             .setContentHolder(viewHolder)
             .setCancelable(false)
@@ -259,14 +513,19 @@ class MainActivity : AppCompatActivity() {
             .create()
 
         dialogPlus?.show()
+        setupPermissionDialog(customView)
+    }
 
-        val imageList = ArrayList<SlideModel>() // Create image list
+    /**
+     * 권한 다이얼로그 설정
+     */
+    private fun setupPermissionDialog(customView: PermissionDialogBinding) {
+        val imageList = ArrayList<SlideModel>().apply {
+            add(SlideModel(R.drawable.accessbillity1))
+            add(SlideModel(R.drawable.accessbillity2))
+        }
 
-        imageList.add(SlideModel(R.drawable.accessbillity1))
-        imageList.add(SlideModel(R.drawable.accessbillity2))
-
-        var imageSlider = customView.tutorialImage
-
+        val imageSlider = customView.tutorialImage
         viewPager = ImageSlider::class.java.getDeclaredField("viewPager").let { field ->
             field.isAccessible = true
             field.get(imageSlider) as ViewPager
@@ -275,17 +534,116 @@ class MainActivity : AppCompatActivity() {
         imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
 
         customView.movePermissionBtn.setOnClickListener {
-            currentIndex++
-            if(customView.movePermissionBtn.text.equals("이동하기")){
-                openAccessibilitySettings(context)
-            }
-            if (currentIndex >= imageList.lastIndex) {
-                viewPager.currentItem = currentIndex
-                customView.movePermissionBtn.text = "이동하기"
-                return@setOnClickListener
-            }else{
-                viewPager.currentItem = currentIndex
-            }
+            handlePermissionDialogButtonClick(customView, imageList.size)
         }
+    }
+
+    /**
+     * 권한 다이얼로그 버튼 클릭 처리
+     */
+    private fun handlePermissionDialogButtonClick(
+        customView: PermissionDialogBinding,
+        totalImages: Int
+    ) {
+        currentIndex++
+
+        if (customView.movePermissionBtn.text.equals("이동하기")) {
+            openAccessibilitySettings()
+        } else if (currentIndex >= totalImages - 1) {
+            viewPager.currentItem = currentIndex
+            customView.movePermissionBtn.text = "이동하기"
+        } else {
+            viewPager.currentItem = currentIndex
+        }
+    }
+
+    /**
+     * 권한 다이얼로그 닫기
+     */
+    private fun dismissPermissionDialog() {
+        dialogPlus?.dismiss()
+        dialogPlus = null
+        currentIndex = 0
+        Log.d(TAG, "권한 다이얼로그 닫기")
+    }
+
+    /**
+     * 접근성 설정 화면 열기
+     */
+    private fun openAccessibilitySettings() {
+        var intent = Intent("com.samsung.accessibility.installed_service")
+        if (intent.resolveActivity(packageManager) == null) {
+            intent = Intent(
+                Settings.ACTION_ACCESSIBILITY_SETTINGS,
+                Uri.parse("package:$packageName")
+            )
+        }
+
+        val extraFragmentArgKey = ":settings:fragment_args_key"
+        val extraShowFragmentArguments = ":settings:show_fragment_args"
+        val bundle = Bundle()
+        val showArgs = "${packageName}/${MyAccessibilityService::class.java.name}"
+
+        bundle.putString(extraFragmentArgKey, showArgs)
+        intent.putExtra(extraFragmentArgKey, showArgs)
+        intent.putExtra(extraShowFragmentArguments, bundle)
+
+        try {
+            Log.d(TAG, "접근성 설정 화면 열기")
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "접근성 설정 화면 열기 실패: $e")
+            startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+            )
+        }
+    }
+
+    // === Battery Optimization ===
+
+    /**
+     * 배터리 최적화 제외 요청
+     */
+    fun excludeFromBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val packageName = this.packageName
+            val powerManager = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+
+                try {
+                    startActivity(intent)
+                    Log.d(TAG, "배터리 최적화 제외 요청")
+                } catch (e: Exception) {
+                    Log.e(TAG, "배터리 최적화 설정 실패", e)
+                    showToast("배터리 최적화 설정 화면을 열 수 없습니다.")
+                }
+            } else {
+                Log.d(TAG, "이미 배터리 최적화 제외됨")
+                showToast("앱이 이미 배터리 최적화에서 제외되어 있습니다.")
+            }
+        } else {
+            Log.w(TAG, "Android 6.0 미만 버전")
+            showToast("Android 6.0 이상에서만 지원됩니다.")
+        }
+    }
+
+    // === Utility Methods ===
+
+    /**
+     * 디바이스 정보 로깅
+     */
+    private fun logDeviceInfo() {
+        val deviceInfo = buildString {
+            append("${Build.MODEL};${Build.BRAND};${Build.DISPLAY};${Build.DEVICE};")
+            append("${Build.BOARD};${Build.HARDWARE};${Build.MANUFACTURER};${Build.ID};")
+            append("${Build.PRODUCT};${Build.VERSION.RELEASE};${Build.VERSION.SDK_INT};")
+            append("${Build.VERSION.INCREMENTAL};${Build.VERSION.CODENAME}")
+        }
+        Log.d(TAG, "디바이스 정보: $deviceInfo")
     }
 }
