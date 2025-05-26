@@ -17,16 +17,10 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.CallFloatingBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
-import com.museblossom.callguardai.presentation.viewmodel.CallRecordingViewModel
+import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
 import com.museblossom.callguardai.util.etc.Notifications
 import com.museblossom.callguardai.util.recorder.Recorder
 import com.museblossom.callguardai.util.recorder.RecorderListner
@@ -42,31 +36,33 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
+import javax.inject.Inject
 
 /**
- * MVVM 패턴으로 리팩토링된 통화 녹음 서비스
- * 책임: 통화 상태 감지, 오버레이 뷰 관리, ViewModel과의 데이터 바인딩
+ * 통화 녹음 서비스 - 직접 상태 관리
+ * 책임: 통화 상태 감지, 오버레이 뷰 관리, 분석 처리
  */
 @AndroidEntryPoint
-class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
+class CallRecordingService : Service() {
 
-    // Lifecycle 관련
-    private val lifecycleRegistry = LifecycleRegistry(this)
-    override val lifecycle: Lifecycle = lifecycleRegistry
-
-    // ViewModel 관련
-    override val viewModelStore: ViewModelStore = ViewModelStore()
-    private val viewModel: CallRecordingViewModel by lazy {
-        ViewModelProvider(this)[CallRecordingViewModel::class.java]
-    }
+    @Inject
+    lateinit var analyzeAudioUseCase: AnalyzeAudioUseCase
 
     // 기본 컴포넌트들
     lateinit var recorder: Recorder
     private val TAG = "통화녹음서비스"
     private var isIncomingCall = false
     private var isOnlyWhisper = false
+
+    // 상태 관리
+    private var isCallActive = false
+    private var isRecording = false
+    private var callDuration = 0
+    private var shouldShowOverlay = false
+    private var isPhishingDetected = false
+    private var isDeepVoiceDetected = false
+    private var noDetectionCount = 0
+    private var hasInitialAnalysisCompleted = false
 
     // UI 관련
     private lateinit var windowManager: WindowManager
@@ -91,21 +87,17 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
         const val OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS = 5000L
         const val ACTION_TRANSCRIBE_FILE = "ACTION_TRANSCRIBE_FILE"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
+        private const val MAX_NO_DETECTION_COUNT = 4
     }
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, " 전화 서비스 생성됨: ${System.currentTimeMillis()}ms")
 
-        lifecycleRegistry.currentState = Lifecycle.State.CREATED
-
         initializeWhisperModel()
         initializeRecorder()
         initializeWindowManager()
         setNotification()
-        observeViewModel()
-
-        lifecycleRegistry.currentState = Lifecycle.State.STARTED
 
         Log.d(TAG, "통화녹음 서비스 onCreate 완료")
     }
@@ -134,9 +126,15 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
 
     private fun initializeRecorder() {
         recorder = Recorder(this, { elapsedSeconds ->
-            viewModel.updateCallDuration(elapsedSeconds)
+            callDuration = elapsedSeconds
+            Log.d(TAG, "통화 시간: ${elapsedSeconds}초")
+            // 10초마다 녹음 중지 및 전사
+            if (elapsedSeconds > 0 && elapsedSeconds % 10 == 0) {
+                Log.d(TAG, "${elapsedSeconds}초 경과, 녹음 중지 및 전사 시작")
+                stopRecording(isOnlyWhisper = isOnlyWhisper)
+            }
         }, { detect, percent ->
-            viewModel.handleDeepVoiceAnalysis(percent)
+            handleDeepVoiceAnalysis(percent)
         })
 
         setRecordListener()
@@ -154,70 +152,6 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
         )
         layoutParams.gravity = Gravity.CENTER
         layoutParams.y = 0
-    }
-
-    private fun observeViewModel() {
-        // 통화 상태 관찰
-        viewModel.isCallActive.observe(this) { isActive ->
-            if (isActive) {
-                startRecording(isOnlyWhisper = false)
-            }
-        }
-
-        // 통화 시간 관찰 (60초마다 전사)
-        viewModel.callDuration.observe(this) { seconds ->
-            if (seconds > 0 && seconds % 60 == 0) {
-                Log.d(TAG, "${seconds}초 경과, 녹음 중지 및 전사 시작")
-                stopRecording(isOnlyWhisper = isOnlyWhisper)
-            }
-        }
-
-        // 오버레이 표시 여부 관찰
-        viewModel.shouldShowOverlay.observe(this) { shouldShow ->
-            Log.d(TAG, "observeViewModel: shouldShowOverlay = $shouldShow") // 초기값 확인 로그 추가
-            if (shouldShow) {
-                setupOverlayView()
-            } else {
-                removeOverlayView()
-                stopSelf()
-            }
-        }
-
-        // 딥보이스 분석 결과 관찰
-        viewModel.deepVoiceResult.observe(this) { result ->
-            result?.let { updateDeepVoiceUI(it) }
-        }
-
-        // 피싱 분석 결과 관찰
-        viewModel.phishingResult.observe(this) { result ->
-            result?.let { updatePhishingUI(it) }
-        }
-
-        // 진동 상태 관찰
-        viewModel.shouldVibrate.observe(this) { shouldVibrate ->
-            if (shouldVibrate) {
-                if (recorder.getVibrate()) {
-                    recorder.vibrateWithPattern(applicationContext)
-                }
-                viewModel.clearVibrateState()
-            }
-        }
-
-        // 토스트 메시지 관찰
-        viewModel.toastMessage.observe(this) { message ->
-            message?.let {
-                showToastMessage(it)
-                viewModel.clearToastMessage()
-            }
-        }
-
-        // 오류 메시지 관찰
-        viewModel.errorMessage.observe(this) { error ->
-            error?.let {
-                Log.e(TAG, "ViewModel 오류: $it")
-                viewModel.clearErrorMessage()
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -268,13 +202,13 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
                 Log.d(TAG, "조건 확인: isIncomingCall=$isIncomingCall, action=${intent.action}")
                 // 조건을 단순화하여 OFFHOOK 상태에서는 항상 통화 시작으로 간주
                 Log.d(TAG, "전화 연결됨 (통화 시작)")
-                viewModel.startCall()
+                startCall()
             }
 
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 Log.d(TAG, "전화 통화 종료 (IDLE 상태)")
                 isIncomingCall = false
-                viewModel.endCall()
+                endCall()
             }
         }
     }
@@ -353,7 +287,6 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
     private fun setupCloseButton() {
         bindingNormal?.closeButton?.setOnClickListener {
             Log.d(TAG, "닫기 버튼 클릭됨")
-            viewModel.manualStopDetection()
 
             serviceScope.launch {
                 recorder.offVibrate(applicationContext)
@@ -464,75 +397,276 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
     }
 
     fun startRecording(isOnlyWhisper: Boolean? = false) {
+        Log.d(TAG, "========================================")
         Log.d(TAG, "녹음 시작 요청 (isOnlyWhisper: ${isOnlyWhisper ?: false})")
+        Log.d(TAG, "현재 녹음 상태: ${recorder.isRecording}")
+        Log.d(TAG, "통화 활성화 상태: $isCallActive")
+        Log.d(TAG, "수신 전화 여부: $isIncomingCall")
+
         if (recorder.isRecording) {
             Log.d(TAG, "이미 녹음 중이므로 요청 무시")
             return
         }
 
-        viewModel.startRecording()
-        serviceScope.launch(Dispatchers.Main) {
-            recorder.startRecording(
-                if (isIncomingCall) 0L else OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS,
-                isOnlyWhisper ?: false
-            )
+        if (!isCallActive) {
+            Log.w(TAG, "통화가 활성화되지 않았으므로 녹음 시작 취소")
+            return
         }
+
+        Log.d(TAG, "실제 녹음 시작 실행...")
+        serviceScope.launch(Dispatchers.Main) {
+            try {
+                val delay =
+                    if (isIncomingCall) 0L else OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS
+                Log.d(TAG, "녹음 준비 지연 시간: ${delay}ms")
+
+                recorder.startRecording(delay, isOnlyWhisper ?: false)
+                isRecording = true
+                Log.d(TAG, "녹음 시작 성공!")
+            } catch (e: Exception) {
+                Log.e(TAG, "녹음 시작 실패: ${e.message}", e)
+            }
+        }
+        Log.d(TAG, "========================================")
     }
 
     fun stopRecording(isOnlyWhisper: Boolean? = false) {
-        Log.d(TAG, "녹음 중지 요청")
-        viewModel.stopRecording()
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "녹음 중지 요청 (isOnlyWhisper: ${isOnlyWhisper ?: false})")
+        Log.d(TAG, "현재 녹음 상태: ${recorder.isRecording}")
+
         serviceScope.launch(Dispatchers.Main) {
-            recorder.stopRecording(isIsOnlyWhisper = isOnlyWhisper ?: false)
+            try {
+                recorder.stopRecording(isIsOnlyWhisper = isOnlyWhisper ?: false)
+                isRecording = false
+                Log.d(TAG, "녹음 중지 완료!")
+            } catch (e: Exception) {
+                Log.e(TAG, "녹음 중지 실패: ${e.message}", e)
+            }
         }
+        Log.d(TAG, "========================================")
     }
 
     private fun setRecordListener() {
+        Log.d(TAG, "RecordListener 설정")
         recorder.setRecordListner(object : RecorderListner {
             override fun onWaveConvertComplete(filePath: String?) {
-                Log.d(TAG, "녹음 결과 WAV 파일 변환 완료: $filePath")
-                filePath?.let { path ->
-                    serviceScope.launch {
-                        val data = decodeWaveFile(File(path))
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "WAV 파일 변환 완료 콜백 호출됨")
+                Log.d(TAG, "파일 경로: $filePath")
+
+                if (filePath.isNullOrEmpty()) {
+                    Log.e(TAG, "파일 경로가 null 또는 비어있음")
+                    return
+                }
+
+                val file = File(filePath)
+                if (!file.exists()) {
+                    Log.e(TAG, "파일이 존재하지 않음: $filePath")
+                    return
+                }
+
+                Log.d(TAG, "파일 크기: ${file.length()} bytes")
+                Log.d(TAG, "파일 존재 여부: ${file.exists()}")
+
+                serviceScope.launch {
+                    try {
+                        Log.d(TAG, "decodeWaveFile 시작...")
+                        val data = decodeWaveFile(file)
+                        Log.d(TAG, "decodeWaveFile 완료 - 데이터 크기: ${data.size}")
+
                         transcribeWithWhisper(data)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "WAV 파일 디코딩 중 오류: ${e.message}", e)
                     }
                 }
+                Log.d(TAG, "========================================")
             }
         })
     }
 
     private suspend fun transcribeWithWhisper(data: FloatArray) {
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "transcribeWithWhisper 시작")
+        Log.d(TAG, "데이터 크기: ${data.size}")
+        Log.d(TAG, "WhisperContext 상태: ${whisperContext != null}")
+
         if (whisperContext == null) {
             Log.e(TAG, "WhisperContext가 초기화되지 않음")
             return
         }
 
-        Log.d(TAG, "Whisper 전사 시작")
-        val start = System.currentTimeMillis()
-        val result = whisperContext?.transcribeData(data) ?: "WhisperContext 미초기화"
-        val elapsed = System.currentTimeMillis() - start
-
-        withContext(Dispatchers.Main) {
-            Log.d(TAG, "Whisper 전사 완료 (${elapsed}ms): $result")
-            startKoBertProcessing(result)
+        if (data.isEmpty()) {
+            Log.e(TAG, "오디오 데이터가 비어있음")
+            return
         }
+
+        try {
+            Log.d(TAG, "Whisper 전사 시작...")
+            val start = System.currentTimeMillis()
+            val result = whisperContext?.transcribeData(data) ?: "WhisperContext 미초기화"
+            val elapsed = System.currentTimeMillis() - start
+
+            Log.d(TAG, "Whisper 전사 소요 시간: ${elapsed}ms")
+            Log.d(TAG, "전사 결과 길이: ${result.length}")
+
+            withContext(Dispatchers.Main) {
+                Log.d(TAG, "========================================")
+                Log.d(TAG, "🎤 Whisper 전사 완료 (${elapsed}ms)")
+                Log.d(TAG, "📝 전사 결과: '$result'")
+                Log.d(TAG, "========================================")
+
+                if (result.isNotBlank() && result != "WhisperContext 미초기화") {
+                    startKoBertProcessing(result)
+                } else {
+                    Log.w(TAG, "전사 결과가 비어있거나 오류 상태")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Whisper 전사 중 오류: ${e.message}", e)
+        }
+        Log.d(TAG, "========================================")
     }
 
     private fun startKoBertProcessing(result: String) {
         serviceScope.launch {
             if (result.isNotBlank()) {
+                Log.d(TAG, "KoBERT 처리 시작 - 텍스트: $result")
                 // 실제 KoBERT 처리 대신 임시로 피싱 감지 로직
-                val isPhishing = result.contains("피싱") // 실제로는 KoBERT 모델 사용
+                val isPhishing =
+                    result.contains("피싱") || result.contains("계좌") || result.contains("송금") || result.contains(
+                        "대출"
+                    )
+                Log.d(TAG, "피싱 키워드 검사 결과: $isPhishing")
 
                 withContext(Dispatchers.Main) {
-                    viewModel.handlePhishingAnalysis(result, isPhishing)
+                    handlePhishingAnalysis(result, isPhishing)
 
                     if (!isPhishing) {
+                        Log.d(TAG, "피싱 미감지, 계속 녹음 진행")
                         isOnlyWhisper = true
                         startRecording(isOnlyWhisper)
+                    } else {
+                        Log.d(TAG, "피싱 감지됨, 녹음 일시 중단")
                     }
                 }
+            } else {
+                Log.d(TAG, "전사 결과가 비어있음")
             }
+        }
+    }
+
+    private fun handleDeepVoiceAnalysis(probability: Int) {
+        try {
+            val analysisResult = createDeepVoiceAnalysisResult(probability)
+            val isDetected = probability >= 50
+            isDeepVoiceDetected = isDetected
+            hasInitialAnalysisCompleted = true
+
+            if (isDetected) {
+                Log.d(TAG, "딥보이스 감지됨 (확률: $probability%)")
+                if (recorder.getVibrate()) {
+                    recorder.vibrateWithPattern(applicationContext)
+                }
+                updateDeepVoiceUI(analysisResult)
+            } else {
+                Log.d(TAG, "딥보이스 미감지 (확률: $probability%)")
+            }
+
+            checkAndHideOverlay()
+        } catch (e: Exception) {
+            Log.e(TAG, "딥보이스 분석 처리 중 오류", e)
+        }
+    }
+
+    private fun handlePhishingAnalysis(text: String, isPhishing: Boolean) {
+        try {
+            val analysisResult = createPhishingAnalysisResult(isPhishing)
+            isPhishingDetected = isPhishing
+            hasInitialAnalysisCompleted = true
+
+            if (isPhishing) {
+                Log.d(TAG, "피싱 감지됨: $text")
+                if (recorder.getVibrate()) {
+                    recorder.vibrateWithPattern(applicationContext)
+                }
+                updatePhishingUI(analysisResult)
+            } else {
+                Log.d(TAG, "피싱 미감지: $text")
+            }
+
+            checkAndHideOverlay()
+        } catch (e: Exception) {
+            Log.e(TAG, "피싱 분석 처리 중 오류", e)
+        }
+    }
+
+    private fun createDeepVoiceAnalysisResult(probability: Int): AnalysisResult {
+        val riskLevel = when {
+            probability >= 80 -> AnalysisResult.RiskLevel.HIGH
+            probability >= 60 -> AnalysisResult.RiskLevel.MEDIUM
+            probability >= 30 -> AnalysisResult.RiskLevel.LOW
+            else -> AnalysisResult.RiskLevel.SAFE
+        }
+
+        return AnalysisResult(
+            type = AnalysisResult.Type.DEEP_VOICE,
+            probability = probability,
+            riskLevel = riskLevel,
+            recommendation = getRecommendation(riskLevel),
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    private fun createPhishingAnalysisResult(isPhishing: Boolean): AnalysisResult {
+        val probability = if (isPhishing) 90 else 10
+        val riskLevel =
+            if (isPhishing) AnalysisResult.RiskLevel.HIGH else AnalysisResult.RiskLevel.SAFE
+
+        return AnalysisResult(
+            type = AnalysisResult.Type.PHISHING,
+            probability = probability,
+            riskLevel = riskLevel,
+            recommendation = getRecommendation(riskLevel),
+            timestamp = System.currentTimeMillis()
+        )
+    }
+
+    private fun getRecommendation(riskLevel: AnalysisResult.RiskLevel): String {
+        return when (riskLevel) {
+            AnalysisResult.RiskLevel.HIGH -> "즉시 통화를 종료하세요!"
+            AnalysisResult.RiskLevel.MEDIUM -> "주의가 필요합니다. 통화 내용을 신중히 판단하세요."
+            AnalysisResult.RiskLevel.LOW -> "주의하여 통화를 진행하세요."
+            AnalysisResult.RiskLevel.SAFE -> "안전한 통화로 판단됩니다."
+        }
+    }
+
+    private fun checkAndHideOverlay() {
+        // 통화가 활성화되어 있지 않으면 오버레이를 숨김
+        if (!isCallActive) {
+            shouldShowOverlay = false
+            removeOverlayView()
+            return
+        }
+
+        // 초기 분석 완료 전에는 오버레이 유지
+        if (!hasInitialAnalysisCompleted) {
+            return
+        }
+
+        if (!isPhishingDetected && !isDeepVoiceDetected) {
+            noDetectionCount++
+            Log.d(TAG, "위협 미감지 ($noDetectionCount/${MAX_NO_DETECTION_COUNT}회 연속)")
+
+            // 통화 시작 직후에는 오버레이를 숨기지 않음
+            if (noDetectionCount >= MAX_NO_DETECTION_COUNT && !isRecording && noDetectionCount > 0) {
+                Log.d(TAG, "${MAX_NO_DETECTION_COUNT}회 연속 위협 미감지. 오버레이 숨김")
+                shouldShowOverlay = false
+                removeOverlayView()
+            }
+        } else {
+            noDetectionCount = 0
+            Log.d(TAG, "위협 감지됨. 연속 미감지 카운트 초기화")
         }
     }
 
@@ -559,7 +693,6 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
         super.onDestroy()
         Log.d(TAG, "통화녹음 서비스 종료 중")
 
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         serviceScope.cancel()
 
         serviceScope.launch {
@@ -573,8 +706,43 @@ class CallRecordingService : Service(), ViewModelStoreOwner, LifecycleOwner {
 
         whisperContext = null
         removeOverlayView()
-        viewModelStore.clear()
 
         Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
+    }
+
+    private fun startCall() {
+        Log.d(TAG, "통화 시작")
+        isCallActive = true
+        isRecording = true
+        isPhishingDetected = false
+        isDeepVoiceDetected = false
+        noDetectionCount = 0
+        shouldShowOverlay = true
+        hasInitialAnalysisCompleted = false
+        setupOverlayView()
+        startRecording(isOnlyWhisper = false)
+    }
+
+    private fun endCall() {
+        Log.d(TAG, "통화 종료 시작")
+        isCallActive = false
+        isRecording = false
+        shouldShowOverlay = false
+
+        // 진행 중인 녹음 중지
+        serviceScope.launch {
+            try {
+                Log.d(TAG, "녹음 중지 중...")
+                recorder.stopRecording(true)
+                Log.d(TAG, "녹음 중지 완료")
+            } catch (e: Exception) {
+                Log.e(TAG, "녹음 중지 중 오류: ${e.message}")
+            }
+        }
+
+        removeOverlayView()
+
+        Log.d(TAG, "통화 종료 완료, 서비스 중지")
+        stopSelf()
     }
 }

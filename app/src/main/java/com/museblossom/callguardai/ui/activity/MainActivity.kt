@@ -571,32 +571,35 @@ class MainActivity : AppCompatActivity() {
      * 접근성 설정 화면 열기
      */
     private fun openAccessibilitySettings() {
-        var intent = Intent("com.samsung.accessibility.installed_service")
-        if (intent.resolveActivity(packageManager) == null) {
-            intent = Intent(
-                Settings.ACTION_ACCESSIBILITY_SETTINGS,
-                Uri.parse("package:$packageName")
-            )
-        }
-
-        val extraFragmentArgKey = ":settings:fragment_args_key"
-        val extraShowFragmentArguments = ":settings:show_fragment_args"
-        val bundle = Bundle()
-        val showArgs = "${packageName}/${MyAccessibilityService::class.java.name}"
-
-        bundle.putString(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraFragmentArgKey, showArgs)
-        intent.putExtra(extraShowFragmentArguments, bundle)
-
         try {
+            // 먼저 삼성 접근성 설정 시도
+            var intent = Intent("com.samsung.accessibility.installed_service")
+            if (intent.resolveActivity(packageManager) == null) {
+                // 일반 접근성 설정으로 대체
+                intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            }
+
+            val extraFragmentArgKey = ":settings:fragment_args_key"
+            val extraShowFragmentArguments = ":settings:show_fragment_args"
+            val bundle = Bundle()
+            val showArgs = "${packageName}/${MyAccessibilityService::class.java.name}"
+
+            bundle.putString(extraFragmentArgKey, showArgs)
+            intent.putExtra(extraFragmentArgKey, showArgs)
+            intent.putExtra(extraShowFragmentArguments, bundle)
+
             Log.d(TAG, "접근성 설정 화면 열기")
             startActivity(intent)
         } catch (e: Exception) {
             Log.e(TAG, "접근성 설정 화면 열기 실패: $e")
-            startActivity(
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
-            )
+            // 가장 기본적인 접근성 설정 화면으로 열기
+            try {
+                val fallbackIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                startActivity(fallbackIntent)
+            } catch (fallbackException: Exception) {
+                Log.e(TAG, "기본 접근성 설정도 열 수 없음: $fallbackException")
+                showToast("접근성 설정을 열 수 없습니다. 수동으로 설정 > 접근성으로 이동해주세요.")
+            }
         }
     }
 
