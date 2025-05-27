@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "385699583181",
+    "project_id": "callguardai",
+    "storage_bucket": "callguardai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:385699583181:android:0fd5dbf784a37a6a84c584",
+        "android_client_info": {
+          "package_name": "com.museblossom.callguardai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "385699583181-rq21vfhhqaoj7cm47a07pdkfa220ko4j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.museblossom.callguardai",
+            "certificate_hash": "c27ad75f3601c7127adff71f6377df5c12705216"
+          }
+        },
+        {
+          "client_id": "385699583181-f1poeddjbm7jaissr4prjn3kgmms7db3.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCy_5txQ6dHz2AKArYiUqoBnuORECOrLqg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "385699583181-f1poeddjbm7jaissr4prjn3kgmms7db3.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
