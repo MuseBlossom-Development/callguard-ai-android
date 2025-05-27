@@ -8,30 +8,20 @@ import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import javax.inject.Inject
 
 /**
  * 오디오 분석을 위한 Repository 패턴 구현
  * NetworkManager를 사용하여 서버와 통신
  */
-class AudioAnalysisRepository private constructor(private val context: Context) :
-    AudioAnalysisRepositoryInterface {
+class AudioAnalysisRepository @Inject constructor(
+    private val context: Context,
+    private val networkManager: NetworkManager
+) : AudioAnalysisRepositoryInterface {
 
     companion object {
         private const val TAG = "AudioAnalysisRepository"
-
-        @Volatile
-        private var INSTANCE: AudioAnalysisRepository? = null
-
-        fun getInstance(context: Context): AudioAnalysisRepository {
-            return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: AudioAnalysisRepository(context.applicationContext).also {
-                    INSTANCE = it
-                }
-            }
-        }
     }
-
-    private val networkManager = NetworkManager.getInstance(context)
 
     /**
      * 딥보이스 분석을 위한 오디오 파일 업로드
@@ -131,7 +121,6 @@ class AudioAnalysisRepository private constructor(private val context: Context) 
      */
     fun release() {
         networkManager.release()
-        INSTANCE = null
         Log.d(TAG, "AudioAnalysisRepository 리소스가 해제되었습니다")
     }
 }

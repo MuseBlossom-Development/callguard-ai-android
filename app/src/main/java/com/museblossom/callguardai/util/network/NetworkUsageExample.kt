@@ -1,9 +1,9 @@
 package com.museblossom.callguardai.util.network
 
+/*
 import android.content.Context
 import android.util.Log
 import com.museblossom.callguardai.repository.AudioAnalysisRepository
-import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -11,6 +11,10 @@ import java.io.File
 
 /**
  * NetworkManager 및 AudioAnalysisRepository 사용법 예시 클래스
+ * 실제 프로덕션 코드에서는 사용하지 않으며, 참고용으로만 제공됩니다.
+ * 
+ * 주의: 이 클래스는 DI 구조 변경으로 인해 현재 사용 불가합니다.
+ * 실제 사용 시에는 Hilt를 통한 의존성 주입을 사용하세요.
  */
 class NetworkUsageExample(private val context: Context) {
 
@@ -18,8 +22,9 @@ class NetworkUsageExample(private val context: Context) {
         private const val TAG = "NetworkUsageExample"
     }
 
-    private val networkManager = NetworkManager.getInstance(context)
-    private val audioAnalysisRepository = AudioAnalysisRepository.getInstance(context)
+    // 주석 처리: DI 전환으로 인해 직접 인스턴스 생성 불가
+    // private val networkManager = NetworkManager.getInstance(context)
+    // private val audioAnalysisRepository = AudioAnalysisRepository.getInstance(context)
 
     /**
      * 코루틴을 사용한 비동기 딥보이스 분석 예시
@@ -209,3 +214,10 @@ class NetworkUsageExample(private val context: Context) {
         }
     }
 }
+*/
+
+/**
+ * 이 클래스는 DI 전환으로 인해 임시로 비활성화되었습니다.
+ * 실제 사용법은 MainActivity나 다른 Hilt가 적용된 컴포넌트를 참고하세요.
+ */
+class NetworkUsageExample

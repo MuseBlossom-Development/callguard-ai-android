@@ -6,8 +6,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.museblossom.callguardai.domain.model.AnalysisResult
+import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
-import com.museblossom.callguardai.repository.AudioAnalysisRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -24,7 +24,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val analyzeAudioUseCase: AnalyzeAudioUseCase,
-    private val audioAnalysisRepository: AudioAnalysisRepository
+    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface
 ) : ViewModel() {
 
     companion object {

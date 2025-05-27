@@ -6,11 +6,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.museblossom.callguardai.repository.DownloadRepository
+import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * 스플래시 화면 ViewModel - MVVM 패턴
@@ -60,7 +61,10 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
     val progress: StateFlow<Double> = _progress
 
     // Repository
-    private val downloadRepository = DownloadRepository(application)
+    private val networkManager = NetworkManager.getInstance(application)
+    private val fileName = "ggml-small.bin"
+    private val fileUrl = "https://deep-voice-asset.s3.ap-northeast-2.amazonaws.com/ggml-small.bin"
+    private val file = File(application.filesDir, fileName)
 
     init {
         initializeSplash()
@@ -72,10 +76,10 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
     fun ensureGgmlFile() {
         viewModelScope.launch {
             try {
-                if (!downloadRepository.isFileExists()) {
+                if (!networkManager.isFileExists(file)) {
                     Log.d(TAG, "GGML 파일이 존재하지 않음. 다운로드 시작")
                     _progress.value = 0.0
-                    downloadRepository.downloadFile(_progress)
+                    downloadFile()
                     _progress.value = 100.0
                     Log.d(TAG, "GGML 파일 다운로드 완료")
                 } else {
@@ -158,7 +162,7 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
      * Whisper 모델 파일 확인
      */
     private fun checkWhisperModelFile(): Boolean {
-        return downloadRepository.isFileExists()
+        return networkManager.isFileExists(file)
     }
 
     /**
@@ -192,7 +196,7 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
             }
 
             // 실제 파일 다운로드 실행
-            downloadRepository.downloadFile(downloadProgress)
+            downloadFile(downloadProgress)
 
             // 다운로드 완료 후 초기화 완료
             completeInitialization()
@@ -200,6 +204,26 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
         } catch (e: Exception) {
             Log.e(TAG, "파일 다운로드 중 오류 발생", e)
             handleInitializationError("파일 다운로드 실패: ${e.message}")
+        }
+    }
+
+    private suspend fun downloadFile(progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0)) {
+        Log.d(TAG, "파일 다운로드 시작")
+        try {
+            val result = networkManager.downloadFile(fileUrl, file, progressFlow)
+
+            result.fold(
+                onSuccess = {
+                    Log.d(TAG, "파일 다운로드 완료")
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "파일 다운로드 실패", error)
+                    throw error
+                }
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "다운로드 중 예외 발생", e)
+            throw e
         }
     }
 

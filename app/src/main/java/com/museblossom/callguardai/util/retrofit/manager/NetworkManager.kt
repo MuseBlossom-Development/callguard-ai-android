@@ -18,6 +18,9 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
 import okhttp3.MediaType.Companion.toMediaType
+import java.io.FileOutputStream
+import java.net.URL
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.logging.HttpLoggingInterceptor
 
 /**
@@ -223,6 +226,115 @@ class NetworkManager private constructor(private val context: Context) {
         }
     }
     
+    /**
+     * 파일 다운로드 (진행률 콜백 포함)
+     */
+    suspend fun downloadFile(
+        url: String,
+        outputFile: File,
+        progress: MutableStateFlow<Double>? = null
+    ): Result<File> = withContext(Dispatchers.IO) {
+        try {
+            if (!isNetworkAvailable()) {
+                return@withContext Result.failure(IOException("네트워크 연결이 필요합니다"))
+            }
+
+            Log.d(TAG, "파일 다운로드 시작: $url")
+
+            val connection = URL(url).openConnection()
+            connection.connectTimeout = 30_000
+            connection.readTimeout = 30_000
+            connection.connect()
+
+            val total = connection.contentLength.takeIf { it > 0 }
+                ?: throw IOException("파일 크기를 알 수 없습니다")
+
+            Log.d(TAG, "다운로드할 파일 크기: ${total / 1024 / 1024}MB")
+
+            connection.inputStream.use { input ->
+                FileOutputStream(outputFile).use { output ->
+                    val buffer = ByteArray(8 * 1024)
+                    var downloaded = 0L
+
+                    while (true) {
+                        val read = input.read(buffer).takeIf { it != -1 } ?: break
+                        output.write(buffer, 0, read)
+                        downloaded += read
+
+                        // 진행률 업데이트
+                        progress?.let {
+                            val percentage =
+                                (downloaded.toDouble() * 100.0 / total).coerceIn(0.0, 100.0)
+                            it.value = percentage
+                        }
+                    }
+                }
+            }
+
+            Log.d(TAG, "파일 다운로드 완료: ${outputFile.name}")
+            Result.success(outputFile)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "파일 다운로드 중 오류 발생", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 파일 다운로드 (콜백 방식)
+     */
+    fun downloadFileCallback(
+        url: String,
+        outputFile: File,
+        onProgress: ((Double) -> Unit)? = null,
+        onSuccess: (File) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val progressFlow = MutableStateFlow(0.0)
+
+                // 진행률 관찰
+                onProgress?.let { callback ->
+                    launch {
+                        progressFlow.collect { progress ->
+                            withContext(Dispatchers.Main) {
+                                callback(progress)
+                            }
+                        }
+                    }
+                }
+
+                val result = downloadFile(url, outputFile, progressFlow)
+
+                withContext(Dispatchers.Main) {
+                    result.fold(
+                        onSuccess = { file -> onSuccess(file) },
+                        onFailure = { error -> onError(error.message ?: "다운로드 실패") }
+                    )
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onError(e.message ?: "다운로드 중 오류 발생")
+                }
+            }
+        }
+    }
+
+    /**
+     * 파일 존재 여부 확인
+     */
+    fun isFileExists(filePath: String): Boolean {
+        return File(filePath).exists()
+    }
+
+    /**
+     * 파일 존재 여부 확인 (File 객체)
+     */
+    fun isFileExists(file: File): Boolean {
+        return file.exists()
+    }
+
     /**
      * 모든 진행 중인 네트워크 요청 취소
      */

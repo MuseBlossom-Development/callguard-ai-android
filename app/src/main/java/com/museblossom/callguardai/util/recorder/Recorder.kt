@@ -14,19 +14,11 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.UiThread
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.museblossom.callguardai.Model.ServerResponse
-import com.museblossom.callguardai.util.retrofit.manager.RetrofitManager
-import com.museblossom.callguardai.util.retrofit.sevice.Mp3UploadService
+import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
 import com.museblossom.deepvoice.util.AudioSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.RequestBody
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
 import java.io.File
 
 class Recorder(
@@ -35,9 +27,11 @@ class Recorder(
     private val detectCallback: (Boolean, Int) -> Unit,
 ) {
     private val context: Context
+    private val networkManager: NetworkManager
 
     init {
         this.context = context.applicationContext ?: context
+        this.networkManager = NetworkManager.getInstance(this.context)
     }
 
     private var mediaRecorder: MediaRecorder? = null
@@ -266,7 +260,20 @@ class Recorder(
 //                convertMp3ToPcm(inputFilePath, getFilePath(context) + "_.wav")
 //                recorderListener?.onWaveConvertComplete(outputMp3FilePath)
                 CoroutineScope(Dispatchers.IO).launch {
-                    uploadMp3File(outputMp3FilePath)
+                    val file = File(outputMp3FilePath)
+                    networkManager.uploadMp3FileCallback(
+                        file = file,
+                        onSuccess = { response ->
+                            Log.i("딥보이스", "딥보이스 결과 : $response")
+                            Log.e("딥보이스", "딥보이스 확률 결과 확인 : ${response.body.ai_probability}")
+
+                            val deepVoiceResult = response.body.ai_probability.toInt()
+                            detectCallback(true, deepVoiceResult)
+                        },
+                        onError = { error ->
+                            Log.e("딥보이스", "딥보이스 업로드 실패 : $error")
+                        }
+                    )
                 }
             } else {
                 Log.e("FFmpeg", "딥보이스 변환 실패")
@@ -293,46 +300,6 @@ class Recorder(
             }
         }
     }
-
-    fun uploadMp3File(filePath: String) {
-        // 업로드할 파일 객체 생성
-        Log.e("확인", "딥보이스 업로드 시작 확인")
-        val file = File(filePath)
-
-        // 파일을 RequestBody로 변환
-        val requestFile = RequestBody.create("audio/mpeg".toMediaTypeOrNull(), file)
-
-        // MultipartBody.Part로 파일 생성
-        val body = MultipartBody.Part.createFormData("file", file.name, requestFile)
-
-        // Retrofit을 사용해 파일 업로드
-        RetrofitManager.retrofit.create(Mp3UploadService::class.java).uploadMp3(requestFile)
-            .enqueue(object : Callback<ServerResponse> {
-                override fun onResponse(
-                    call: Call<ServerResponse>,
-                    response: Response<ServerResponse>
-                ) {
-                    Log.i("딥보이스", "딥보이스 결과 : $response")
-                    Log.i("딥보이스", "딥보이스 결과 : ${response.body()}")
-                    Log.e("딥보이스", "딥보이스 확률 결과 확인 : ${response.body()?.body?.ai_probability}")
-
-                    var deepVoiceResult = response.body()?.body?.ai_probability?.toInt()
-//                    deepVoiceResult = 59
-
-                    if (response.body()?.body?.ai_probability != null) {
-                        if (deepVoiceResult != null) {
-                            detectCallback(true, deepVoiceResult)
-                        }
-                    }
-                }
-
-                override fun onFailure(call: Call<ServerResponse>, response: Throwable) {
-                    Log.e("딥보이스", "딥보이스응답 실패 : ${response}")
-                    Log.e("딥보이스", "딥보이스응답 실패2 : ${response.localizedMessage}")
-                }
-            })
-    }
-
 
     fun offVibrate(context: Context) {
         isVibrate = false
