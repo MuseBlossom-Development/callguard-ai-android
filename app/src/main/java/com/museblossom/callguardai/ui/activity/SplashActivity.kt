@@ -29,6 +29,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.denzcoskun.imageslider.ImageSlider
 import com.denzcoskun.imageslider.constants.ScaleTypes
 import com.denzcoskun.imageslider.models.SlideModel
+import com.google.firebase.auth.FirebaseAuth
 import com.mackhartley.roundedprogressbar.RoundedProgressBar
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivitySplashBinding
@@ -36,11 +37,12 @@ import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
 import com.museblossom.callguardai.ui.viewmodel.SplashViewModel
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import render.animations.Render
 import java.io.File
 
-
+@AndroidEntryPoint
 class SplashActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySplashBinding
     private lateinit var render: Render
@@ -50,34 +52,29 @@ class SplashActivity : AppCompatActivity() {
     private lateinit var viewHolder: ViewHolder
     private lateinit var progressBar: RoundedProgressBar
     private lateinit var statusTextView: TextView
-    private  var permissionsGranted = true
+    private var permissionsGranted = true
     private var isPause = false
     private val viewModel: SplashViewModel by viewModels()
-
+    private lateinit var auth: FirebaseAuth
 
     override fun onResume() {
         super.onResume()
-//        Log.i("시점 확인", "리줌")
-//        if (!permissionsGranted && !isPause) {
-//            checkAndRequestPermissions()
-//        }
     }
 
     override fun onPause() {
         super.onPause()
     }
 
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivitySplashBinding.inflate(layoutInflater).apply {
             setContentView(root)
         }
-//        binding.logo.alpha = 0f
-//        binding.logoText.alpha = 0f
+
+        // Firebase Auth 초기화
+        auth = FirebaseAuth.getInstance()
+
         initValue()
-
-
     }
 
     private fun initValue() {
@@ -106,7 +103,7 @@ class SplashActivity : AppCompatActivity() {
         }
 
         // 첫 번째 애니메이션이 끝난 후 두 번째 뷰의 애니메이션을 시작
-        fadeIn1.addListener(object : android.animation.Animator.AnimatorListener {
+        fadeIn1.addListener(object : Animator.AnimatorListener {
             override fun onAnimationStart(animation: Animator) {
 
             }
@@ -123,30 +120,10 @@ class SplashActivity : AppCompatActivity() {
                     }
 
                     override fun onAnimationEnd(animation: Animator) {
-                        Log.d("다운확인 ","애니메이션 끝남")
-                        if(!checkModelExists()){
-                            downloadModel()
-                        }else{
-                            progressBar.visibility = View.VISIBLE
-                            progressBar.setProgressPercentage(100.0)
-                            statusTextView.text = "준비 완료"
-//                        navigateToMain()
-                            dialogSetting()
-                            if (!Settings.canDrawOverlays(applicationContext)) {
-                                showOverlayPermissionDialog(applicationContext)
-                            }else{
-                                moveToEtcPermissionActivity()
-                            }
-                        }
-//                        else {
-//                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-//                                val permissionsToRequest =
-//                                    getAppDeclaredPermissions(applicationContext)
-//                                if (permissionsToRequest != null)
-//                                    requestPermissions(permissionsToRequest, 0)
-//                            }
-//                        }
+                        Log.d("스플래시", "애니메이션이 완료되었습니다")
+                        checkModelAndAuth()
                     }
+
                     override fun onAnimationCancel(animation: Animator) {
 
                     }
@@ -167,6 +144,46 @@ class SplashActivity : AppCompatActivity() {
             }
         })
         fadeIn1.start()
+    }
+
+    private fun checkModelAndAuth() {
+        statusTextView.text = "모델 확인 중..."
+
+        if (!checkModelExists()) {
+            downloadModel()
+        } else {
+            progressBar.visibility = View.VISIBLE
+            progressBar.setProgressPercentage(100.0)
+            statusTextView.text = "인증 확인 중..."
+
+            // 로그인 상태 확인
+            checkAuthStatus()
+        }
+    }
+
+    private fun checkAuthStatus() {
+        // Firebase Auth 자동 로그인 상태 확인 제거
+        // 매번 명시적으로 로그인 요구
+        Log.d("인증확인", "로그인이 필요합니다")
+        statusTextView.text = "로그인 필요"
+        moveToLoginActivity()
+    }
+
+    private fun proceedToPermissionCheck() {
+        statusTextView.text = "권한 확인 중..."
+        dialogSetting()
+        if (!Settings.canDrawOverlays(applicationContext)) {
+            showOverlayPermissionDialog(applicationContext)
+        } else {
+            moveToEtcPermissionActivity()
+        }
+    }
+
+    private fun moveToLoginActivity() {
+        val intent = Intent(this@SplashActivity, LoginActivity::class.java)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+        finish()
     }
 
     private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
@@ -238,23 +255,16 @@ class SplashActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (Settings.canDrawOverlays(this)) {
-            Log.e("확인", "오버레이 권한 있음")
+            Log.d("권한확인", "오버레이 권한이 허용되었습니다")
             if (dialogPlus.isShowing) {
                 Log.e("확인", "다이얼로그 닫음1")
                 dialogPlus.dismiss()
                 moveToEtcPermissionActivity()
             }
-//            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-//                Log.e("확인", "다이얼로그 각종권한")
-//                val permissionsToRequest = getAppDeclaredPermissions(this)
-//                if (permissionsToRequest != null)
-//                    requestPermissions(permissionsToRequest, 0)
-//            }
         } else {
-            Log.e("확인", "오버레이 권한 없음")
+            Log.d("권한확인", "오버레이 권한이 없습니다")
             if (dialogPlus.isShowing) {
                 Log.e("확인", "다이얼로그 닫음2")
-//                dialogPlus.dismiss()
                 showOverlayPermissionDialog(applicationContext)
             }
         }
@@ -311,7 +321,7 @@ class SplashActivity : AppCompatActivity() {
                 }
             } else {
                 // 권한이 모두 승인되었을 때 처리할 코드 추가
-                Log.d("Permission", "권한이 승인되었습니다.")
+                Log.d("권한확인", "모든 권한이 승인되었습니다")
                 isPause = false // 권한이 승인된 경우 다이얼로그를 다시 표시할 수 있도록 초기화
             }
         }
@@ -330,14 +340,13 @@ class SplashActivity : AppCompatActivity() {
                 isPause = true
                 startActivity(intent)
             }
-//            .setNegativeButton("취소", null)
             .show()
     }
 
     private fun checkModelExists(): Boolean{
         val ggmlFile = File(filesDir, "ggml-small.bin")
         return if (ggmlFile.exists()) {
-            Log.d("다운확인 ","파일있음")
+            Log.d("모델확인", "모델 파일이 존재합니다")
             true
         }else{
             false
@@ -357,14 +366,8 @@ class SplashActivity : AppCompatActivity() {
                             statusTextView.text = "다운로드 중: ${"%.1f".format(pct)}%"
                         }
                         else -> {
-                            statusTextView.text = "준비 완료"
-//                        navigateToMain()
-                            dialogSetting()
-                            if (!Settings.canDrawOverlays(applicationContext)) {
-                                showOverlayPermissionDialog(applicationContext)
-                            }else{
-                                moveToEtcPermissionActivity()
-                            }
+                            statusTextView.text = "인증 확인 중..."
+                            checkAuthStatus()
                         }
                     }
                 }

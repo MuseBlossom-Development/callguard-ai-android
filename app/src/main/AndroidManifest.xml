@@ -47,6 +47,7 @@
         android:label="@string/app_name"
         android:roundIcon="@drawable/app_logo"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.CallGuardAI">
 
         <!-- 스플래시 / 런처 -->
@@ -58,6 +59,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 로그인 -->
+        <activity
+            android:name=".ui.activity.LoginActivity"
+            android:exported="false" />
 
         <!-- 메인 등 나머지 액티비티 -->
         <activity android:name=".ui.activity.MainActivity" android:exported="true" />

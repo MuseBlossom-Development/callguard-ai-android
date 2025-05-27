@@ -9,4 +9,7 @@
     <string name="notification_title__deep_voice_detect">딥보이스 탐지됨!</string>
     <string name="accessibility_service_label">CallGuardAI</string>
 
+    <!-- Google OAuth Client ID -->
+    <string name="default_web_client_id">385699583181-f1poeddjbm7jaissr4prjn3kgmms7db3.apps.googleusercontent.com</string>
+
 </resources>

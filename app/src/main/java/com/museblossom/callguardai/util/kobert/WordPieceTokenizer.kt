@@ -34,7 +34,7 @@ class WordPieceTokenizer(context: Context) {
 
     // 기본 토큰화 (BasicTokenizer 역할 부분)
     private fun basicTokenize(text: String): List<String> {
-        val cleanedText = text.toLowerCase(Locale.getDefault()) // 소문자 변환
+        val cleanedText = text.lowercase(Locale.getDefault()) // 소문자 변환
             .replace(Regex("[^\uAC00-\uD7AFa-zA-Z0-9.,!?% ]"), " ") // 한글, 영어, 숫자, 기본 문장 부호 외 제거하고 공백으로
             .replace(Regex("\\s+"), " ") // 여러 공백을 단일 공백으로
             .trim()

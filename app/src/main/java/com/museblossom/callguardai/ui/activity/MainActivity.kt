@@ -94,6 +94,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         checkInitialPermissions()
         logDeviceInfo()
+        initializeFCM()
     }
 
     override fun onResume() {
@@ -649,4 +650,39 @@ class MainActivity : AppCompatActivity() {
         }
         Log.d(TAG, "디바이스 정보: $deviceInfo")
     }
+
+    // === FCM Initialization ===
+
+    /**
+     * FCM 초기화 및 토큰 가져오기
+     */
+    private fun initializeFCM() {
+        Log.d(TAG, "FCM 초기화 시작")
+
+        // TODO: Firebase 라이브러리 설정 문제로 일시적으로 주석처리
+        /*
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (!task.isSuccessful) {
+                Log.w(TAG, "FCM 토큰 가져오기 실패", task.exception)
+                return@addOnCompleteListener
+            }
+            
+            // FCM 토큰 가져오기 성공
+            val token = task.result
+            Log.d(TAG, "FCM 토큰: $token")
+            
+            // TODO: 서버로 토큰 전송
+            sendTokenToServer(token)
+        }
+        */
+    }
+    
+    /**
+     * FCM 토큰을 서버로 전송
+     */
+    private fun sendTokenToServer(token: String) {
+        Log.d(TAG, "FCM 토큰 서버 전송: $token")
+        // TODO: 서버 API 호출하여 토큰 전송
+    }
 }
+
