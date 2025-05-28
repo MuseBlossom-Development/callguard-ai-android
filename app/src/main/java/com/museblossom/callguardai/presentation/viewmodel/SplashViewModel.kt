@@ -58,10 +58,6 @@ class SplashViewModel @Inject constructor(
     private val _isReadyToNavigate = MutableLiveData<Boolean>()
     val isReadyToNavigate: LiveData<Boolean> = _isReadyToNavigate
 
-    // 필수 파일 다운로드 필요 여부
-    private val _requiresDownload = MutableLiveData<Boolean>()
-    val requiresDownload: LiveData<Boolean> = _requiresDownload
-
     // 다운로드 진행률을 위한 StateFlow (SplashActivity에서 사용)
     private val _progress = MutableStateFlow(-1.0)
     val progress: StateFlow<Double> = _progress
@@ -84,17 +80,47 @@ class SplashViewModel @Inject constructor(
                 if (!callGuardRepository.isFileExists(file)) {
                     Log.d(TAG, "GGML 파일이 존재하지 않음. 다운로드 시작")
                     _progress.value = 0.0
-                    downloadFile()
-                    _progress.value = 100.0
-                    Log.d(TAG, "GGML 파일 다운로드 완료")
+
+                    // STT 모델 다운로드 링크 요청
+                    val sttModelResult = callGuardRepository.downloadSTTModel()
+                    sttModelResult.fold(
+                        onSuccess = { sttModelData ->
+                            Log.d(TAG, "STT 모델 다운로드 링크 받기 성공: ${sttModelData.downloadLink}")
+                            Log.d(TAG, "예상 MD5: ${sttModelData.md5}")
+                            downloadFile(sttModelData.downloadLink, _progress, sttModelData.md5)
+                            _progress.value = 100.0
+                            Log.d(TAG, "GGML 파일 다운로드 완료")
+                        },
+                        onFailure = { error ->
+                            Log.e(TAG, "STT 모델 다운로드 링크 요청 실패", error)
+                            _progress.value = -1.0
+                        }
+                    )
                 } else {
                     Log.d(TAG, "GGML 파일이 이미 존재함")
                     _progress.value = 100.0
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                Log.d(TAG, "GGML 파일 다운로드가 취소되었습니다 (정상적인 액티비티 종료)")
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "GGML 파일 다운로드 실패", e)
                 _progress.value = -1.0
             }
+        }
+    }
+
+    /**
+     * 로그인 상태 확인
+     */
+    suspend fun checkLoginStatus(): Boolean {
+        return try {
+            val isLoggedIn = callGuardRepository.isLoggedIn()
+            Log.d(TAG, "로그인 상태: $isLoggedIn")
+            isLoggedIn
+        } catch (e: Exception) {
+            Log.e(TAG, "로그인 상태 확인 실패", e)
+            false
         }
     }
 
@@ -113,8 +139,12 @@ class SplashViewModel @Inject constructor(
                 // 단계별 초기화
                 performInitializationSteps()
 
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 코루틴 취소는 정상적인 상황이므로 로그만 남기고 에러 처리하지 않음
+                Log.d(TAG, "스플래시 초기화가 취소되었습니다 (정상적인 액티비티 종료)")
+                throw e // CancellationException은 다시 throw해야 함
             } catch (e: Exception) {
-                Log.e(TAG, "스플래시 초기화 중 오류 발생", e)
+                Log.e(TAG, "스플래시 초기화 중 실제 오류 발생", e)
                 handleInitializationError("초기화 중 오류가 발생했습니다: ${e.message}")
             }
         }
@@ -189,22 +219,37 @@ class SplashViewModel @Inject constructor(
         Log.d(TAG, "파일 다운로드 시작")
 
         try {
-            // 실제 다운로드 로직 사용
-            val downloadProgress = MutableStateFlow(0.0)
+            // STT 모델 다운로드 링크 요청
+            _statusMessage.value = "다운로드 링크 확인 중..."
+            val sttModelResult = callGuardRepository.downloadSTTModel()
 
-            // 다운로드 진행률 관찰
-            viewModelScope.launch {
-                downloadProgress.collect { progress ->
-                    _downloadProgress.value = progress.toInt()
-                    _statusMessage.value = "AI 모델 다운로드 중... ${progress.toInt()}%"
+            sttModelResult.fold(
+                onSuccess = { sttModelData ->
+                    Log.d(TAG, "STT 모델 다운로드 링크 받기 성공: ${sttModelData.downloadLink}")
+                    Log.d(TAG, "예상 MD5: ${sttModelData.md5}")
+
+                    // 실제 다운로드 로직 사용
+                    val downloadProgress = MutableStateFlow(0.0)
+
+                    // 다운로드 진행률 관찰
+                    viewModelScope.launch {
+                        downloadProgress.collect { progress ->
+                            _downloadProgress.value = progress.toInt()
+                            _statusMessage.value = "AI 모델 다운로드 중... ${progress.toInt()}%"
+                        }
+                    }
+
+                    // 실제 파일 다운로드 실행 - API에서 받은 링크와 MD5 사용
+                    downloadFile(sttModelData.downloadLink, downloadProgress, sttModelData.md5)
+
+                    // 다운로드 완료 후 초기화 완료
+                    completeInitialization()
+                },
+                onFailure = { error ->
+                    Log.e(TAG, "STT 모델 다운로드 링크 요청 실패", error)
+                    handleInitializationError("다운로드 링크 요청 실패: ${error.message}")
                 }
-            }
-
-            // 실제 파일 다운로드 실행
-            downloadFile(downloadProgress)
-
-            // 다운로드 완료 후 초기화 완료
-            completeInitialization()
+            )
 
         } catch (e: Exception) {
             Log.e(TAG, "파일 다운로드 중 오류 발생", e)
@@ -212,10 +257,18 @@ class SplashViewModel @Inject constructor(
         }
     }
 
-    private suspend fun downloadFile(progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0)) {
-        Log.d(TAG, "파일 다운로드 시작")
+    private suspend fun downloadFile(
+        url: String = fileUrl,
+        progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0),
+        expectedMD5: String? = null
+    ) {
+        Log.d(TAG, "파일 다운로드 시작: $url")
+        if (expectedMD5 != null) {
+            Log.d(TAG, "MD5 검증 활성화: $expectedMD5")
+        }
+
         try {
-            val result = callGuardRepository.downloadFile(fileUrl, file, progressFlow)
+            val result = callGuardRepository.downloadFile(url, file, progressFlow, expectedMD5)
 
             result.fold(
                 onSuccess = {
@@ -299,4 +352,8 @@ class SplashViewModel @Inject constructor(
         COMPLETED,       // 완료
         ERROR           // 오류
     }
+
+    // 필수 파일 다운로드 필요 여부
+    private val _requiresDownload = MutableLiveData<Boolean>()
+    val requiresDownload: LiveData<Boolean> = _requiresDownload
 }

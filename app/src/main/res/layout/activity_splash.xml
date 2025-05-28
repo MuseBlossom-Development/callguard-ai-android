@@ -38,7 +38,7 @@
         app:rpbBackgroundColor="#CCCCCC"
         app:rpbBackgroundTextColor="@color/white"
         app:rpbCornerRadius="20dp"
-        app:rpbProgressColor="#888"
+        app:rpbProgressColor="#ffffff"
         app:rpbProgressTextColor="@color/mainAppColor"
         app:rpbTextPadding="12dp"
         app:rpbTextSize="18sp"

@@ -72,7 +72,8 @@ interface CallGuardRepositoryInterface {
     suspend fun downloadFile(
         url: String,
         outputFile: File,
-        onProgress: MutableStateFlow<Double>? = null
+        onProgress: MutableStateFlow<Double>? = null,
+        expectedMD5: String? = null
     ): Result<File>
 
     /**

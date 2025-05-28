@@ -162,11 +162,27 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun checkAuthStatus() {
-        // Firebase Auth 자동 로그인 상태 확인 제거
-        // 매번 명시적으로 로그인 요구
-        Log.d("인증확인", "로그인이 필요합니다")
-        statusTextView.text = "로그인 필요"
-        moveToLoginActivity()
+        lifecycleScope.launch {
+            try {
+                // Repository를 통해 JWT 토큰 확인
+                val isLoggedIn = viewModel.checkLoginStatus()
+
+                if (isLoggedIn) {
+                    Log.d("인증확인", "로그인 상태 확인됨")
+                    statusTextView.text = "로그인 확인됨"
+                    // 권한 체크로 진행
+                    proceedToPermissionCheck()
+                } else {
+                    Log.d("인증확인", "로그인이 필요합니다")
+                    statusTextView.text = "로그인 필요"
+                    moveToLoginActivity()
+                }
+            } catch (e: Exception) {
+                Log.e("인증확인", "로그인 상태 확인 실패", e)
+                statusTextView.text = "로그인 필요"
+                moveToLoginActivity()
+            }
+        }
     }
 
     private fun proceedToPermissionCheck() {
