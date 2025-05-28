@@ -7,16 +7,24 @@ import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityAlarmOffBinding
+import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.util.recorder.Recorder
+import dagger.hilt.android.AndroidEntryPoint
 import io.github.tonnyl.spark.Spark
+import javax.inject.Inject
 
-
+@AndroidEntryPoint
 class AlarmOffActivity : AppCompatActivity() {
+
+    @Inject
+    lateinit var audioAnalysisRepository: AudioAnalysisRepositoryInterface
+
     private lateinit var binding: ActivityAlarmOffBinding
     private lateinit var recorder: Recorder
     private lateinit var notificationManager: NotificationManager
     private lateinit var spark: Spark
     private var aiPercent = 0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -33,7 +41,7 @@ class AlarmOffActivity : AppCompatActivity() {
         recorder = Recorder(this, {}, { b: Boolean, i: Int ->
             Log.e("확인", "퍼센트 : $i")
             aiPercent = i
-        })
+        }, audioAnalysisRepository)
 
         binding.warningTextView.text = "AI가 생성한 딥보이스 확률\n$aiPercent% 입니다"
 

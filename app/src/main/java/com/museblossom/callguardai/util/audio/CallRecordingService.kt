@@ -20,6 +20,7 @@ import androidx.core.content.ContextCompat
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.CallFloatingBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
+import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
 import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.museblossom.callguardai.util.etc.Notifications
@@ -47,6 +48,9 @@ class CallRecordingService : Service() {
 
     @Inject
     lateinit var analyzeAudioUseCase: AnalyzeAudioUseCase
+
+    @Inject
+    lateinit var audioAnalysisRepository: AudioAnalysisRepositoryInterface
 
     // 기본 컴포넌트들
     lateinit var recorder: Recorder
@@ -125,17 +129,22 @@ class CallRecordingService : Service() {
     }
 
     private fun initializeRecorder() {
-        recorder = Recorder(this, { elapsedSeconds ->
-            callDuration = elapsedSeconds
-            Log.d(TAG, "통화 시간: ${elapsedSeconds}초")
-            // 10초마다 녹음 중지 및 전사
-            if (elapsedSeconds > 0 && elapsedSeconds % 10 == 0) {
-                Log.d(TAG, "${elapsedSeconds}초 경과, 녹음 중지 및 전사 시작")
-                stopRecording(isOnlyWhisper = isOnlyWhisper)
-            }
-        }, { detect, percent ->
-            handleDeepVoiceAnalysis(percent)
-        })
+        recorder = Recorder(
+            this,
+            { elapsedSeconds ->
+                callDuration = elapsedSeconds
+                Log.d(TAG, "통화 시간: ${elapsedSeconds}초")
+                // 10초마다 녹음 중지 및 전사
+                if (elapsedSeconds > 0 && elapsedSeconds % 10 == 0) {
+                    Log.d(TAG, "${elapsedSeconds}초 경과, 녹음 중지 및 전사 시작")
+                    stopRecording(isOnlyWhisper = isOnlyWhisper)
+                }
+            },
+            { detect, percent ->
+                handleDeepVoiceAnalysis(percent)
+            },
+            audioAnalysisRepository
+        )
 
         setRecordListener()
     }

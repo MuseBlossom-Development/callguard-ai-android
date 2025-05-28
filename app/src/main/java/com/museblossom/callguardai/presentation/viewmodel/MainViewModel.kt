@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
+import com.museblossom.callguardai.domain.usecase.CallGuardUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -24,7 +25,8 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val analyzeAudioUseCase: AnalyzeAudioUseCase,
-    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface
+    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface,
+    private val callGuardUseCase: CallGuardUseCase
 ) : ViewModel() {
 
     companion object {
@@ -69,6 +71,10 @@ class MainViewModel @Inject constructor(
     private val _callDuration = MutableLiveData<Int>()
     val callDuration: LiveData<Int> = _callDuration
 
+    // 로그인 상태
+    private val _isLoggedIn = MutableLiveData<Boolean>()
+    val isLoggedIn: LiveData<Boolean> = _isLoggedIn
+
     init {
         initializeViewModel()
     }
@@ -84,9 +90,27 @@ class MainViewModel @Inject constructor(
         _deepVoiceAnalysis.value = null
         _phishingAnalysis.value = null
         _errorMessage.value = null
+        _isLoggedIn.value = false
 
         checkNetworkStatus()
+        checkLoginStatus()
         Log.d(TAG, "ViewModel 초기화 완료")
+    }
+
+    /**
+     * 로그인 상태 확인
+     */
+    private fun checkLoginStatus() {
+        viewModelScope.launch {
+            try {
+                val loginStatus = callGuardUseCase.isLoggedIn()
+                _isLoggedIn.value = loginStatus
+                Log.d(TAG, "로그인 상태: $loginStatus")
+            } catch (e: Exception) {
+                Log.e(TAG, "로그인 상태 확인 실패", e)
+                _isLoggedIn.value = false
+            }
+        }
     }
 
     /**
@@ -212,24 +236,86 @@ class MainViewModel @Inject constructor(
             try {
                 Log.d(TAG, "FCM 토큰 서버 전송 요청: $fcmToken")
 
-                // TODO: CallGuardUseCase를 통해 토큰 전송
-                // val result = callGuardUseCase.updateFCMToken(fcmToken)
-                // result.fold(
-                //     onSuccess = { 
-                //         Log.d(TAG, "FCM 토큰 서버 전송 성공") 
-                //     },
-                //     onFailure = { exception ->
-                //         Log.e(TAG, "FCM 토큰 서버 전송 실패", exception)
-                //         _errorMessage.value = "FCM 토큰 전송 실패: ${exception.message}"
-                //     }
-                // )
+                // 로그인 상태 확인
+                val isLoggedIn = callGuardUseCase.isLoggedIn()
+                if (!isLoggedIn) {
+                    Log.w(TAG, "사용자가 로그인하지 않음. FCM 토큰 전송 건너뜀")
+                    return@launch
+                }
 
-                // 임시로 로그만 출력
-                Log.d(TAG, "FCM 토큰 전송 기능은 추후 구현 예정")
+                val result = callGuardUseCase.updateFCMToken(fcmToken)
+                result.fold(
+                    onSuccess = {
+                        Log.d(TAG, "FCM 토큰 서버 전송 성공")
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "FCM 토큰 서버 전송 실패", exception)
+                        _errorMessage.value = "FCM 토큰 전송 실패: ${exception.message}"
+                    }
+                )
 
             } catch (e: Exception) {
                 Log.e(TAG, "FCM 토큰 전송 중 예외 발생", e)
                 _errorMessage.value = "FCM 토큰 전송 중 오류: ${e.message}"
+            }
+        }
+    }
+
+    /**
+     * 구글 로그인
+     */
+    fun loginWithGoogle(googleToken: String) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                Log.d(TAG, "구글 로그인 시작")
+
+                val result = callGuardUseCase.loginWithGoogle(googleToken)
+                result.fold(
+                    onSuccess = { loginData ->
+                        Log.d(TAG, "구글 로그인 성공")
+                        _isLoggedIn.value = true
+                        _uiState.value = UiState.READY
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "구글 로그인 실패", exception)
+                        _errorMessage.value = "로그인 실패: ${exception.message}"
+                        _isLoggedIn.value = false
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "구글 로그인 중 예외 발생", e)
+                _errorMessage.value = "로그인 중 오류: ${e.message}"
+                _isLoggedIn.value = false
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * 로그아웃
+     */
+    fun logout() {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "로그아웃 시작")
+
+                val result = callGuardUseCase.logout()
+                result.fold(
+                    onSuccess = {
+                        Log.d(TAG, "로그아웃 성공")
+                        _isLoggedIn.value = false
+                        _uiState.value = UiState.IDLE
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "로그아웃 실패", exception)
+                        _errorMessage.value = "로그아웃 실패: ${exception.message}"
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "로그아웃 중 예외 발생", e)
+                _errorMessage.value = "로그아웃 중 오류: ${e.message}"
             }
         }
     }

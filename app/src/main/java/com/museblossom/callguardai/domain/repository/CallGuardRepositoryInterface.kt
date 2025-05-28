@@ -20,6 +20,16 @@ interface CallGuardRepositoryInterface {
     suspend fun snsLogin(googleToken: String): Result<LoginData>
 
     /**
+     * 사용자 회원가입 (약관 동의 포함)
+     */
+    suspend fun registerUser(
+        googleToken: String,
+        agreedToTerms: Boolean,
+        agreedToPrivacy: Boolean,
+        agreedToMarketing: Boolean
+    ): Result<LoginData>
+
+    /**
      * Push Token 갱신
      */
     suspend fun updatePushToken(fcmToken: String): Result<Unit>
@@ -58,4 +68,18 @@ interface CallGuardRepositoryInterface {
      * 로그인 상태 확인
      */
     suspend fun isLoggedIn(): Boolean
+
+    /**
+     * 파일 다운로드 (STT 모델 등)
+     */
+    suspend fun downloadFile(
+        url: String,
+        outputFile: File,
+        onProgress: ((Double) -> Unit)? = null
+    ): Result<File>
+
+    /**
+     * 파일 존재 여부 확인
+     */
+    fun isFileExists(file: File): Boolean
 }

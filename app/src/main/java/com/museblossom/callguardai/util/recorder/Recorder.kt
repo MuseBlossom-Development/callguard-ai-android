@@ -14,7 +14,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.UiThread
 import com.arthenica.ffmpegkit.FFmpegKit
-import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
+import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.deepvoice.util.AudioSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,13 +25,12 @@ class Recorder(
     context: Context,
     private val callback: (Int) -> Unit,
     private val detectCallback: (Boolean, Int) -> Unit,
+    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface
 ) {
     private val context: Context
-    private val networkManager: NetworkManager
 
     init {
         this.context = context.applicationContext ?: context
-        this.networkManager = NetworkManager.getInstance(this.context)
     }
 
     private var mediaRecorder: MediaRecorder? = null
@@ -261,14 +260,11 @@ class Recorder(
 //                recorderListener?.onWaveConvertComplete(outputMp3FilePath)
                 CoroutineScope(Dispatchers.IO).launch {
                     val file = File(outputMp3FilePath)
-                    networkManager.uploadMp3FileCallback(
-                        file = file,
-                        onSuccess = { response ->
-                            Log.i("딥보이스", "딥보이스 결과 : $response")
-                            Log.e("딥보이스", "딥보이스 확률 결과 확인 : ${response.body.ai_probability}")
-
-                            val deepVoiceResult = response.body.ai_probability.toInt()
-                            detectCallback(true, deepVoiceResult)
+                    audioAnalysisRepository.analyzeDeepVoiceCallback(
+                        audioFile = file,
+                        onSuccess = { aiProbability ->
+                            Log.i("딥보이스", "딥보이스 확률 결과 : $aiProbability%")
+                            detectCallback(true, aiProbability)
                         },
                         onError = { error ->
                             Log.e("딥보이스", "딥보이스 업로드 실패 : $error")

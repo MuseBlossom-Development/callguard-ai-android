@@ -118,17 +118,13 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun sendTokenToServer(googleIdToken: String) {
-        // TODO: 자체 서버 API 호출 구현
-        // 예시:
-        // 1. 구글 토큰을 서버로 전송
-        // 2. 서버에서 토큰 검증 후 자체 인증 토큰 반환
-        // 3. 성공 시 proceedToMain() 호출
+        // 구글 로그인 성공 후 약관 동의 페이지로 이동
+        Log.d("서버통신", "약관 동의 페이지로 이동, 토큰: ${googleIdToken}")
 
-        Log.d("서버통신", "구글 토큰을 서버로 전송: ${googleIdToken.substring(0, 20)}...")
-
-        // 임시로 성공 처리 (실제 서버 API 구현 필요)
-        Toast.makeText(this, "서버 인증 성공!", Toast.LENGTH_SHORT).show()
-        proceedToMain()
+        val intent = Intent(this, TermsAgreementActivity::class.java)
+        intent.putExtra("google_id_token", googleIdToken)
+        startActivity(intent)
+        finish()
     }
 
     private fun proceedToMain() {

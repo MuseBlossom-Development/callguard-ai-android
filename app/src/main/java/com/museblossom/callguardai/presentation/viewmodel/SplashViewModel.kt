@@ -6,12 +6,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
+import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import javax.inject.Inject
 
 /**
  * 스플래시 화면 ViewModel - MVVM 패턴
@@ -21,7 +23,11 @@ import java.io.File
  * - 다음 화면 이동 시점 결정
  * - 초기화 오류 처리
  */
-class SplashViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class SplashViewModel @Inject constructor(
+    application: Application,
+    private val callGuardRepository: CallGuardRepositoryInterface
+) : AndroidViewModel(application) {
 
     companion object {
         private const val TAG = "SplashViewModel"
@@ -61,7 +67,6 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
     val progress: StateFlow<Double> = _progress
 
     // Repository
-    private val networkManager = NetworkManager.getInstance(application)
     private val fileName = "ggml-small.bin"
     private val fileUrl = "https://deep-voice-asset.s3.ap-northeast-2.amazonaws.com/ggml-small.bin"
     private val file = File(application.filesDir, fileName)
@@ -76,7 +81,7 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
     fun ensureGgmlFile() {
         viewModelScope.launch {
             try {
-                if (!networkManager.isFileExists(file)) {
+                if (!callGuardRepository.isFileExists(file)) {
                     Log.d(TAG, "GGML 파일이 존재하지 않음. 다운로드 시작")
                     _progress.value = 0.0
                     downloadFile()
@@ -162,7 +167,7 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
      * Whisper 모델 파일 확인
      */
     private fun checkWhisperModelFile(): Boolean {
-        return networkManager.isFileExists(file)
+        return callGuardRepository.isFileExists(file)
     }
 
     /**
@@ -210,7 +215,13 @@ class SplashViewModel(application: Application) : AndroidViewModel(application) 
     private suspend fun downloadFile(progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0)) {
         Log.d(TAG, "파일 다운로드 시작")
         try {
-            val result = networkManager.downloadFile(fileUrl, file, progressFlow)
+            val result = callGuardRepository.downloadFile(
+                url = fileUrl,
+                outputFile = file,
+                onProgress = { progress ->
+                    progressFlow.value = progress
+                }
+            )
 
             result.fold(
                 onSuccess = {

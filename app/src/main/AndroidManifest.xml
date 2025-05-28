@@ -65,6 +65,11 @@
             android:name=".ui.activity.LoginActivity"
             android:exported="false" />
 
+        <!-- 약관 동의 -->
+        <activity
+            android:name=".ui.activity.TermsAgreementActivity"
+            android:exported="false" />
+
         <!-- 메인 등 나머지 액티비티 -->
         <activity android:name=".ui.activity.MainActivity" android:exported="true" />
         <activity android:name=".ui.activity.TestActivity" android:exported="false" />
