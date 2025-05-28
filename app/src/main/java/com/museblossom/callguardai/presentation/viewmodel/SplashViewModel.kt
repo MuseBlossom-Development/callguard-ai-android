@@ -215,13 +215,7 @@ class SplashViewModel @Inject constructor(
     private suspend fun downloadFile(progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0)) {
         Log.d(TAG, "파일 다운로드 시작")
         try {
-            val result = callGuardRepository.downloadFile(
-                url = fileUrl,
-                outputFile = file,
-                onProgress = { progress ->
-                    progressFlow.value = progress
-                }
-            )
+            val result = callGuardRepository.downloadFile(fileUrl, file, progressFlow)
 
             result.fold(
                 onSuccess = {

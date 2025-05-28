@@ -1,6 +1,7 @@
 package com.museblossom.callguardai.domain.repository
 
 import com.museblossom.callguardai.data.model.*
+import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 
 /**
@@ -16,18 +17,14 @@ interface CallGuardRepositoryInterface {
 
     /**
      * SNS 로그인 (구글)
+     * 회원가입과 로그인이 통합된 API
      */
     suspend fun snsLogin(googleToken: String): Result<LoginData>
 
     /**
-     * 사용자 회원가입 (약관 동의 포함)
+     * 마케팅 동의 업데이트
      */
-    suspend fun registerUser(
-        googleToken: String,
-        agreedToTerms: Boolean,
-        agreedToPrivacy: Boolean,
-        agreedToMarketing: Boolean
-    ): Result<LoginData>
+    suspend fun updateMarketingAgreement(isAgreeMarketing: Boolean): Result<Unit>
 
     /**
      * Push Token 갱신
@@ -75,7 +72,7 @@ interface CallGuardRepositoryInterface {
     suspend fun downloadFile(
         url: String,
         outputFile: File,
-        onProgress: ((Double) -> Unit)? = null
+        onProgress: MutableStateFlow<Double>? = null
     ): Result<File>
 
     /**

@@ -76,16 +76,23 @@ class TermsAgreementActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             try {
-                val result = callGuardRepository.registerUser(
-                    googleToken = googleIdToken,
-                    agreedToTerms = agreedTerms["terms"] ?: false,
-                    agreedToPrivacy = agreedTerms["privacy"] ?: false,
-                    agreedToMarketing = agreedTerms["marketing"] ?: false
-                )
+                // 먼저 로그인/회원가입 진행
+                val result = callGuardRepository.snsLogin(googleIdToken)
 
                 result.fold(
                     onSuccess = { loginData ->
-                        Log.i(TAG, "회원가입 성공 - 토큰: ${loginData.token}")
+                        Log.i(TAG, "로그인/회원가입 성공 - 토큰: ${loginData.token}")
+
+                        // 마케팅 동의가 있으면 별도로 업데이트
+                        val agreedToMarketing = agreedTerms["marketing"] ?: false
+                        if (agreedToMarketing) {
+                            Log.d(TAG, "마케팅 동의 업데이트 중...")
+                            callGuardRepository.updateMarketingAgreement(true)
+                                .onFailure { e ->
+                                    Log.e(TAG, "마케팅 동의 업데이트 실패", e)
+                                    // 마케팅 동의 실패는 무시하고 진행
+                                }
+                        }
 
                         // 서버 회원가입 성공 후 Firebase Auth에 로그인
                         val credential = GoogleAuthProvider.getCredential(googleIdToken, null)
@@ -94,28 +101,27 @@ class TermsAgreementActivity : ComponentActivity() {
                                 Log.d(TAG, "Firebase Auth 로그인 성공 - 사용자: ${authResult.user?.email}")
                                 Toast.makeText(
                                     this@TermsAgreementActivity,
-                                    "회원가입이 완료되었습니다!",
+                                    "로그인이 완료되었습니다!",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 proceedToMain()
                             }
                             .addOnFailureListener { firebaseException ->
                                 Log.e(TAG, "Firebase Auth 로그인 실패", firebaseException)
-                                // Firebase 로그인 실패해도 서버 회원가입은 성공했으므로 진행
+                                // Firebase 로그인 실패해도 서버 로그인은 성공했으므로 진행
                                 Toast.makeText(
                                     this@TermsAgreementActivity,
-                                    "회원가입이 완료되었습니다!",
+                                    "로그인이 완료되었습니다!",
                                     Toast.LENGTH_SHORT
                                 ).show()
                                 proceedToMain()
                             }
                     },
                     onFailure = { exception ->
-                        Log.e(TAG, "회원가입 실패")
-                        Log.e(TAG, "회원가입 실패", exception)
+                        Log.e(TAG, "로그인/회원가입 실패", exception)
                         Toast.makeText(
                             this@TermsAgreementActivity,
-                            "회원가입 중 오류가 발생했습니다: ${exception.message}",
+                            "로그인 중 오류가 발생했습니다: ${exception.message}",
                             Toast.LENGTH_SHORT
                         ).show()
                     }
