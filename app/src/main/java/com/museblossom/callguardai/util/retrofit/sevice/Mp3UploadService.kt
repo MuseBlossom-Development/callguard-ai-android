@@ -1,6 +1,6 @@
 package com.museblossom.callguardai.util.retrofit.sevice
 
-import com.museblossom.callguardai.Model.ServerResponse
+import com.museblossom.callguardai.domain.model.ServerResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Call

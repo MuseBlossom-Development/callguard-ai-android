@@ -1,4 +1,4 @@
-package com.museblossom.callguardai.ui.viewmodel
+package com.museblossom.callguardai.presentation.viewmodel
 
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -200,6 +200,37 @@ class MainViewModel @Inject constructor(
 
         if (!isAvailable && _uiState.value == UiState.READY) {
             _uiState.value = UiState.NETWORK_ERROR
+        }
+    }
+
+    /**
+     * FCM 토큰 서버에 전송
+     * 책임: FCM 토큰을 서버에 등록하여 푸시 알림 수신 가능하도록 설정
+     */
+    fun updateFCMToken(fcmToken: String) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "FCM 토큰 서버 전송 요청: $fcmToken")
+
+                // TODO: CallGuardUseCase를 통해 토큰 전송
+                // val result = callGuardUseCase.updateFCMToken(fcmToken)
+                // result.fold(
+                //     onSuccess = { 
+                //         Log.d(TAG, "FCM 토큰 서버 전송 성공") 
+                //     },
+                //     onFailure = { exception ->
+                //         Log.e(TAG, "FCM 토큰 서버 전송 실패", exception)
+                //         _errorMessage.value = "FCM 토큰 전송 실패: ${exception.message}"
+                //     }
+                // )
+
+                // 임시로 로그만 출력
+                Log.d(TAG, "FCM 토큰 전송 기능은 추후 구현 예정")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "FCM 토큰 전송 중 예외 발생", e)
+                _errorMessage.value = "FCM 토큰 전송 중 오류: ${e.message}"
+            }
         }
     }
 

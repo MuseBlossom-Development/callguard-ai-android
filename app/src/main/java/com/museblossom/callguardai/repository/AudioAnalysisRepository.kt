@@ -2,7 +2,7 @@ package com.museblossom.callguardai.repository
 
 import android.content.Context
 import android.util.Log
-import com.museblossom.callguardai.Model.ServerResponse
+import com.museblossom.callguardai.domain.model.ServerResponse
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.util.retrofit.manager.NetworkManager
 import kotlinx.coroutines.Dispatchers
@@ -34,12 +34,12 @@ class AudioAnalysisRepository @Inject constructor(
             val result = networkManager.uploadMp3File(audioFile)
 
             result.fold(
-                onSuccess = { serverResponse ->
+                onSuccess = { serverResponse: ServerResponse ->
                     val aiProbability = serverResponse.body.ai_probability
                     Log.d(TAG, "딥보이스 분석 성공: AI 확률 = $aiProbability%")
                     Result.success(aiProbability)
                 },
-                onFailure = { exception ->
+                onFailure = { exception: Throwable ->
                     Log.e(TAG, "딥보이스 분석 실패", exception)
                     Result.failure(exception)
                 }
@@ -61,12 +61,12 @@ class AudioAnalysisRepository @Inject constructor(
                 val result = networkManager.uploadMp3Bytes(audioBytes)
 
                 result.fold(
-                    onSuccess = { serverResponse ->
+                    onSuccess = { serverResponse: ServerResponse ->
                         val aiProbability = serverResponse.body.ai_probability
                         Log.d(TAG, "딥보이스 분석 성공 (바이트): AI 확률 = $aiProbability%")
                         Result.success(aiProbability)
                     },
-                    onFailure = { exception ->
+                    onFailure = { exception: Throwable ->
                         Log.e(TAG, "딥보이스 분석 실패 (바이트)", exception)
                         Result.failure(exception)
                     }
@@ -89,12 +89,12 @@ class AudioAnalysisRepository @Inject constructor(
 
         networkManager.uploadMp3FileCallback(
             file = audioFile,
-            onSuccess = { serverResponse ->
+            onSuccess = { serverResponse: ServerResponse ->
                 val aiProbability = serverResponse.body.ai_probability
                 Log.d(TAG, "딥보이스 분석 성공 (콜백): AI 확률 = $aiProbability%")
                 onSuccess(aiProbability)
             },
-            onError = { errorMessage ->
+            onError = { errorMessage: String ->
                 Log.e(TAG, "딥보이스 분석 실패 (콜백): $errorMessage")
                 onError(errorMessage)
             }

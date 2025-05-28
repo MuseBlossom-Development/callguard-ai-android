@@ -23,11 +23,12 @@ import androidx.viewpager.widget.ViewPager
 import com.denzcoskun.imageslider.ImageSlider
 import com.denzcoskun.imageslider.constants.ScaleTypes
 import com.denzcoskun.imageslider.models.SlideModel
+import com.google.firebase.messaging.FirebaseMessaging
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityMainBinding
 import com.museblossom.callguardai.databinding.PermissionDialogBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
-import com.museblossom.callguardai.ui.viewmodel.MainViewModel
+import com.museblossom.callguardai.presentation.viewmodel.MainViewModel
 import com.museblossom.callguardai.util.etc.MyAccessibilityService
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
@@ -659,8 +660,6 @@ class MainActivity : AppCompatActivity() {
     private fun initializeFCM() {
         Log.d(TAG, "FCM 초기화 시작")
 
-        // TODO: Firebase 라이브러리 설정 문제로 일시적으로 주석처리
-        /*
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
                 Log.w(TAG, "FCM 토큰 가져오기 실패", task.exception)
@@ -674,7 +673,6 @@ class MainActivity : AppCompatActivity() {
             // TODO: 서버로 토큰 전송
             sendTokenToServer(token)
         }
-        */
     }
     
     /**
@@ -682,7 +680,8 @@ class MainActivity : AppCompatActivity() {
      */
     private fun sendTokenToServer(token: String) {
         Log.d(TAG, "FCM 토큰 서버 전송: $token")
-        // TODO: 서버 API 호출하여 토큰 전송
+
+        // ViewModel을 통해 서버로 토큰 전송
+        viewModel.updateFCMToken(token)
     }
 }
-

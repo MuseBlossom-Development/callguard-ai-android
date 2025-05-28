@@ -76,3 +76,20 @@ data class AnalysisResult(
         return riskLevel == RiskLevel.MEDIUM || riskLevel == RiskLevel.HIGH
     }
 }
+
+/**
+ * 서버 응답 모델
+ */
+data class ServerResponse(
+    val statusCode: Int,
+    val message: String,
+    val now: String,
+    val body: Features
+)
+
+/**
+ * 서버 응답 피처 모델
+ */
+data class Features(
+    val ai_probability: Int
+)

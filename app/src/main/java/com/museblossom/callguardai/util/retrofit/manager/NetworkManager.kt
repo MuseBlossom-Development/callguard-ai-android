@@ -5,7 +5,7 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.Log
 import com.google.gson.GsonBuilder
-import com.museblossom.callguardai.Model.ServerResponse
+import com.museblossom.callguardai.domain.model.ServerResponse
 import com.museblossom.callguardai.util.retrofit.sevice.Mp3UploadService
 import okhttp3.*
 import retrofit2.Call
