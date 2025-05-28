@@ -1,5 +1,6 @@
 package com.museblossom.callguardai.ui.activity
 import android.Manifest
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -7,19 +8,41 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.TextUtils
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 
 import com.gun0912.tedpermission.PermissionListener
 import com.gun0912.tedpermission.normal.TedPermission
 import com.museblossom.callguardai.R
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 
 class EtcPermissonActivity : AppCompatActivity() {
     private var isRetryPermission = false
+    private var permissionCheckJob: Job? = null
 
+    // MainActivity 실행 및 현재 Activity 종료를 위한 통합 함수
+    private fun launchMainAndFinish() {
+        if (!isFinishing && !isChangingConfigurations) { // 액티비티가 유효할 때만 실행
+            Log.d(
+                "Permission",
+                "launchMainAndFinish 호출됨, MainActivity 시작 및 EtcPermissonActivity 종료"
+            )
+            val intent = Intent(this, MainActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            startActivity(intent)
+            finish()
+        }
+    }
 
     override fun onResume() {
         super.onResume()
@@ -61,8 +84,22 @@ class EtcPermissonActivity : AppCompatActivity() {
             }
 
             if (deniedPermissions.isEmpty()) {
-                Log.d("Permission", "모든 권한을 획득했습니다: $grantedPermissions")
-                // 모든 권한이 허용됨, 필요한 후속 작업 수행
+                Log.d("Permission", "권한 요청 실패: $deniedPermissions")
+                if (deniedPermissions.size == 1) {
+                    if (deniedPermissions.contains("android.permission.SYSTEM_ALERT_WINDOW")) {
+                        moveToMainActivity()
+                    } else {
+                        Log.d("Permission", "권한 요청 실패1111: $deniedPermissions")
+//                        checkAndRequestPermissions()
+                        showEtcPermission(this@EtcPermissonActivity)
+                    }
+                }    // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
+                else {
+                    Log.d("Permission", "권한 요청 실패2222: $deniedPermissions")
+                    if (!isRetryPermission) {
+                        showEtcPermission(this@EtcPermissonActivity)
+                    }
+                }
             } else {
                 Log.d("Permission", "권한 요청 실패: $deniedPermissions")
                 if (deniedPermissions.size == 1) {
@@ -88,7 +125,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         override fun onPermissionGranted() {
 //            Toast.makeText(this@EtcPermissonActivity, "권한 허가", Toast.LENGTH_SHORT).show()
 //            //TODO your task
-            moveToMainActivity()
+            checkAndLaunchMainActivityOrRequestAccessibility()
         }
 
         override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
@@ -117,12 +154,182 @@ class EtcPermissonActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun moveToMainActivity() {
-        var intent = Intent(this@EtcPermissonActivity, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-        finish()
+    private fun checkAndLaunchMainActivityOrRequestAccessibility() {
+        if (isAccessibilityServiceEnabled(
+                this,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+            )
+        ) {
+            Log.d("Permission", "모든 권한 (접근성 포함) 획득. 메인 액티비티로 이동합니다.")
+            launchMainAndFinish()
+        } else {
+            Log.d("Permission", "일반 권한은 획득했으나, 접근성 권한이 필요합니다. 안내 다이얼로그 표시.")
+            showAccessibilityGuideDialog()
+        }
     }
+
+    private fun moveToMainActivity() {
+        // 접근성 권한 확인
+        if (!isAccessibilityServiceEnabled(
+                this,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+            )
+        ) {
+            // 접근성 권한이 없으면 안내 다이얼로그 표시
+            showAccessibilityGuideDialog()
+        } else {
+            // 접근성 권한이 있으면 메인으로 이동
+            val intent = Intent(this@EtcPermissonActivity, MainActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            finish()
+        }
+    }
+
+    /**
+     * 접근성 설정 안내 다이얼로그 표시
+     */
+    private fun showAccessibilityGuideDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("접근성 권한 설정")
+            .setMessage("CallGuardAI가 정상 작동하려면 접근성 권한이 필요합니다.\n\n설정 방법:\n1. '설치된 앱'에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택\n3. 스위치를 켜서 활성화")
+            .setPositiveButton("설정으로 이동") { _, _ ->
+                openAccessibilitySettings()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * 접근성 서비스 활성화 여부 확인
+     */
+    private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
+        val enabledServices = Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+
+        val colonSplitter = TextUtils.SimpleStringSplitter(':')
+        colonSplitter.setString(enabledServices)
+        while (colonSplitter.hasNext()) {
+            val componentName = colonSplitter.next()
+            if (componentName.equals(
+                    ComponentName(context, service).flattenToString(),
+                    ignoreCase = true
+                )
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * 접근성 설정 화면으로 직접 이동
+     */
+    private fun openAccessibilitySettings() {
+        try {
+            // 권한 체크 작업을 먼저 시작 (스킵 방지)
+            startAccessibilityPermissionCheck()
+
+            val componentName = ComponentName(
+                packageName,
+                "com.museblossom.callguardai.util.etc.MyAccessibilityService"
+            )
+
+            // 제조사별 접근성 설정 시도
+            val manufacturerIntents = listOf(
+                // 삼성
+                Intent("com.samsung.accessibility.installed_service"),
+                // LG
+                Intent("com.lge.settings.ACCESSIBILITY_SETTINGS"),
+                // 샤오미
+                Intent("com.android.settings.ACCESSIBILITY_SETTINGS_ACTIVITY")
+            )
+
+            for (intent in manufacturerIntents) {
+                try {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    if (intent.resolveActivity(packageManager) != null) {
+                        startActivity(intent)
+                        Log.d("접근성설정", "제조사별 접근성 설정으로 이동 성공: ${intent.action}")
+                        Toast.makeText(this, "설치된 앱에서 'CallGuardAI'를 찾아 활성화해주세요", Toast.LENGTH_LONG)
+                            .show()
+                        return
+                    }
+                } catch (e: Exception) {
+                    Log.d("접근성설정", "제조사별 설정 시도 실패: ${intent.action}")
+                }
+            }
+
+            // 기본 접근성 설정으로 이동
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+            // 가능한 경우 앱을 하이라이트하기 위한 extras 추가
+            val bundle = Bundle()
+            bundle.putString(":settings:fragment_args_key", componentName.flattenToString())
+            intent.putExtra(":settings:show_fragment_args", bundle)
+            intent.putExtra(":settings:fragment_args_key", componentName.flattenToString())
+
+            startActivity(intent)
+            Log.d("접근성설정", "기본 접근성 설정 화면으로 이동")
+
+            // 안내 메시지
+            Toast.makeText(
+                this,
+                "설치된 앱 → CallGuardAI → 스위치 켜기",
+                Toast.LENGTH_LONG
+            ).show()
+
+        } catch (e: Exception) {
+            Log.e("접근성설정", "접근성 설정 화면 열기 완전 실패", e)
+            Toast.makeText(
+                this,
+                "설정 > 접근성 > 설치된 앱에서 CallGuardAI를 활성화해주세요",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /**
+     * 접근성 권한 주기적 체크
+     */
+    private fun startAccessibilityPermissionCheck() {
+        // 기존 작업이 있다면 취소
+        permissionCheckJob?.cancel()
+
+        // 새로운 권한 체크 작업 시작
+        permissionCheckJob = lifecycleScope.launch {
+            var checkCount = 0
+            while (isActive) {
+                delay(1000) // 1초마다 체크
+                checkCount++
+
+                if (isAccessibilityServiceEnabled(
+                        applicationContext,
+                        com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+                    )
+                ) {
+                    Log.d("권한확인", "접근성 권한 자동 감지됨 (${checkCount}초 후). 메인 액티비티로 이동 시도.")
+                    launchMainAndFinish() // launchMainAndFinish 호출
+                    break
+                }
+
+                // 30초 이상 체크했는데도 권한이 없으면 로그 출력
+                if (checkCount >= 30 && checkCount % 10 == 0) {
+                    Log.d("권한확인", "접근성 권한 체크 중... (${checkCount}초 경과, 아직 미획득)")
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        permissionCheckJob?.cancel()
+    }
+
     private fun moveToPermissonDeinedActivity() {
         var intent = Intent(this@EtcPermissonActivity, PermissionDeinedActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -38,6 +38,9 @@ import com.museblossom.callguardai.ui.viewmodel.SplashViewModel
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import render.animations.Render
 import java.io.File
@@ -56,6 +59,7 @@ class SplashActivity : AppCompatActivity() {
     private var isPause = false
     private val viewModel: SplashViewModel by viewModels()
     private lateinit var auth: FirebaseAuth
+    private var permissionCheckJob: Job? = null
 
     override fun onResume() {
         super.onResume()
@@ -237,15 +241,49 @@ class SplashActivity : AppCompatActivity() {
 
         customView.movePermissionBtn.setOnClickListener {
             checkOverlayPermission() //todo 어레이 마지막 버튼시
+
+            // 권한 체크 작업 시작
+            startPermissionCheck()
         }
 
     }
+
+    private fun startPermissionCheck() {
+        // 기존 작업이 있다면 취소
+        permissionCheckJob?.cancel()
+
+        // 새로운 권한 체크 작업 시작
+        permissionCheckJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(1000) // 1초마다 체크
+
+                if (Settings.canDrawOverlays(applicationContext)) {
+                    Log.d("권한확인", "오버레이 권한이 자동으로 감지됨")
+
+                    // 앱을 foreground로 가져오기
+                    val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
+                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(bringToFrontIntent)
+
+                    if (dialogPlus.isShowing) {
+                        dialogPlus.dismiss()
+                        moveToEtcPermissionActivity()
+                    }
+
+                    break // 루프 종료
+                }
+            }
+        }
+    }
+
     private fun moveToMainActivity() {
         var intent = Intent(this@SplashActivity, MainActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(intent)
         finish()
     }
+
     private fun moveToEtcPermissionActivity() {
         var intent = Intent(this@SplashActivity, EtcPermissonActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -253,6 +291,104 @@ class SplashActivity : AppCompatActivity() {
         finish()
     }
 
+    /**
+     * 접근성 설정 화면으로 직접 이동
+     */
+    private fun openAccessibilitySettings() {
+        try {
+            // 앱의 접근성 서비스 정보
+            val componentName = ComponentName(
+                packageName,
+                "com.museblossom.callguardai.util.etc.MyAccessibilityService"
+            )
+            val settingsComponentName = componentName.flattenToString()
+
+            // 먼저 앱의 접근성 서비스 설정으로 직접 이동 시도
+            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+
+            // 특정 서비스로 직접 이동하기 위한 인자 설정
+            val extraFragmentArgKey = ":settings:fragment_args_key"
+            val extraShowFragmentArguments = ":settings:show_fragment_args"
+            val bundle = Bundle()
+
+            bundle.putString(extraFragmentArgKey, settingsComponentName)
+            intent.putExtra(extraFragmentArgKey, settingsComponentName)
+            intent.putExtra(extraShowFragmentArguments, bundle)
+
+            // 추가 플래그로 더 명확하게 지정
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+            intent.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+
+            startActivity(intent)
+            Log.d("접근성설정", "앱 접근성 설정 화면으로 이동")
+
+            // 권한 체크 작업 시작
+            startAccessibilityPermissionCheck()
+
+        } catch (e: Exception) {
+            Log.e("접근성설정", "접근성 설정 화면 열기 실패", e)
+            // 실패 시 일반 접근성 설정으로 이동
+            try {
+                val fallbackIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(fallbackIntent)
+            } catch (fallbackException: Exception) {
+                Log.e("접근성설정", "기본 접근성 설정도 열 수 없음", fallbackException)
+                Toast.makeText(this, "접근성 설정을 열 수 없습니다. 수동으로 설정 > 접근성으로 이동해주세요.", Toast.LENGTH_LONG)
+                    .show()
+            }
+        }
+    }
+
+    /**
+     * 접근성 권한 주기적 체크
+     */
+    private fun startAccessibilityPermissionCheck() {
+        // 기존 작업이 있다면 취소
+        permissionCheckJob?.cancel()
+
+        // 새로운 권한 체크 작업 시작
+        permissionCheckJob = lifecycleScope.launch {
+            while (isActive) {
+                delay(1000) // 1초마다 체크
+
+                if (isAccessibilityServiceEnabled(
+                        applicationContext,
+                        com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+                    )
+                ) {
+                    Log.d("권한확인", "접근성 권한이 자동으로 감지됨")
+
+                    // 앱을 foreground로 가져오기
+                    val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
+                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    startActivity(bringToFrontIntent)
+
+                    // 다음 화면으로 이동
+                    moveToMainActivity()
+
+                    break // 루프 종료
+                }
+            }
+        }
+    }
+
+    // EtcPermissonActivity에서도 접근성 권한을 확인하고 설정하도록 수정
+    private fun checkAndRequestAccessibilityPermission() {
+        if (!isAccessibilityServiceEnabled(
+                applicationContext,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+            )
+        ) {
+            // 접근성 권한이 없으면 설정 화면으로 이동
+            openAccessibilitySettings()
+        } else {
+            // 이미 권한이 있으면 메인으로 이동
+            moveToMainActivity()
+        }
+    }
 
     private fun checkOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
@@ -260,6 +396,9 @@ class SplashActivity : AppCompatActivity() {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:$packageName")
             )
+            // 설정 화면에서 돌아올 때 앱으로 자동 복귀하도록 플래그 추가
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             activityResultLauncher.launch(intent)
         } else {
 //            showOverlay()
@@ -272,6 +411,13 @@ class SplashActivity : AppCompatActivity() {
     ) {
         if (Settings.canDrawOverlays(this)) {
             Log.d("권한확인", "오버레이 권한이 허용되었습니다")
+
+            // 앱을 foreground로 가져오기
+            val bringToFrontIntent = Intent(this, SplashActivity::class.java)
+            bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(bringToFrontIntent)
+
             if (dialogPlus.isShowing) {
                 Log.e("확인", "다이얼로그 닫음1")
                 dialogPlus.dismiss()
@@ -375,7 +521,13 @@ class SplashActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.progress.collect { pct ->
                     when {
-                        pct < 0.0 -> statusTextView.text = "다운로드 실패"
+                        pct == -2.0 -> {
+                            // 아직 시작되지 않음 - 아무것도 표시하지 않음
+                        }
+
+                        pct == -1.0 -> {
+                            statusTextView.text = "다운로드 실패"
+                        }
                         pct < 100.0 -> {
                             progressBar.visibility = View.VISIBLE
                             progressBar.setProgressPercentage(pct)
@@ -391,6 +543,11 @@ class SplashActivity : AppCompatActivity() {
         }
     }
 
+
+    override fun onDestroy() {
+        super.onDestroy()
+        permissionCheckJob?.cancel()
+    }
 
     companion object {
         private const val REQUEST_PERMISSION_CODE = 0

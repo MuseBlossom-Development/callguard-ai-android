@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         observeViewModel()
         checkInitialPermissions()
         logDeviceInfo()
-        initializeFCM()
+        // initializeFCM() // 여기서 호출하지 않음
     }
 
     override fun onResume() {
@@ -591,7 +591,9 @@ class MainActivity : AppCompatActivity() {
             intent.putExtra(extraShowFragmentArguments, bundle)
 
             Log.d(TAG, "접근성 설정 화면 열기")
-            startActivity(intent)
+            if (!isFinishing && !isChangingConfigurations) {
+                startActivity(intent)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "접근성 설정 화면 열기 실패: $e")
             // 가장 기본적인 접근성 설정 화면으로 열기
@@ -683,5 +685,12 @@ class MainActivity : AppCompatActivity() {
 
         // ViewModel을 통해 서버로 토큰 전송
         viewModel.updateFCMToken(token)
+    }
+
+    /**
+     * 약관 동의 완료 후 FCM 토큰 가져오기
+     */
+    fun initializeFCMFromTermsAgreement() {
+        initializeFCM()
     }
 }

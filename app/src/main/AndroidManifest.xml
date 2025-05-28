@@ -97,7 +97,7 @@
         <!-- 접근성 서비스 (VOIP 감지 등) -->
         <service
             android:name=".util.etc.MyAccessibilityService"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>

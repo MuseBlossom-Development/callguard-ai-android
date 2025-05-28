@@ -8,10 +8,12 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -59,7 +61,7 @@ class SplashViewModel @Inject constructor(
     val isReadyToNavigate: LiveData<Boolean> = _isReadyToNavigate
 
     // 다운로드 진행률을 위한 StateFlow (SplashActivity에서 사용)
-    private val _progress = MutableStateFlow(-1.0)
+    private val _progress = MutableStateFlow(-2.0) // -2.0: 아직 시작 안됨, -1.0: 실패, 0~100: 진행률
     val progress: StateFlow<Double> = _progress
 
     // Repository
@@ -67,9 +69,14 @@ class SplashViewModel @Inject constructor(
     private val fileUrl = "https://deep-voice-asset.s3.ap-northeast-2.amazonaws.com/ggml-small.bin"
     private val file = File(application.filesDir, fileName)
 
-    init {
-        initializeSplash()
-    }
+    // 다운로드 진행 중 플래그
+    @Volatile
+    private var isDownloading = false
+
+    // init 블록 제거 - SplashActivity에서 필요시에만 호출
+    // init {
+    //     initializeSplash()
+    // }
 
     /**
      * GGML 파일 다운로드 보장 (SplashActivity에서 호출)
@@ -77,35 +84,84 @@ class SplashViewModel @Inject constructor(
     fun ensureGgmlFile() {
         viewModelScope.launch {
             try {
-                if (!callGuardRepository.isFileExists(file)) {
-                    Log.d(TAG, "GGML 파일이 존재하지 않음. 다운로드 시작")
-                    _progress.value = 0.0
-
-                    // STT 모델 다운로드 링크 요청
-                    val sttModelResult = callGuardRepository.downloadSTTModel()
-                    sttModelResult.fold(
-                        onSuccess = { sttModelData ->
-                            Log.d(TAG, "STT 모델 다운로드 링크 받기 성공: ${sttModelData.downloadLink}")
-                            Log.d(TAG, "예상 MD5: ${sttModelData.md5}")
-                            downloadFile(sttModelData.downloadLink, _progress, sttModelData.md5)
-                            _progress.value = 100.0
-                            Log.d(TAG, "GGML 파일 다운로드 완료")
-                        },
-                        onFailure = { error ->
-                            Log.e(TAG, "STT 모델 다운로드 링크 요청 실패", error)
-                            _progress.value = -1.0
-                        }
-                    )
-                } else {
-                    Log.d(TAG, "GGML 파일이 이미 존재함")
-                    _progress.value = 100.0
+                // 이미 다운로드 중이면 리턴
+                if (isDownloading) {
+                    Log.d(TAG, "이미 다운로드가 진행 중입니다")
+                    return@launch
                 }
+
+                // STT 모델 다운로드 링크 및 MD5 정보 요청
+                val sttModelResult = callGuardRepository.downloadSTTModel()
+
+                sttModelResult.fold(
+                    onSuccess = { sttModelData ->
+                        Log.d(TAG, "STT 모델 정보 받기 성공: ${sttModelData.downloadLink}")
+                        Log.d(TAG, "서버 MD5: ${sttModelData.md5}")
+
+                        if (callGuardRepository.isFileExists(file)) {
+                            Log.d(TAG, "GGML 파일이 이미 존재함. MD5 검증 시작")
+
+                            // 기존 파일의 MD5 계산
+                            val currentMD5 = calculateFileMD5(file)
+                            Log.d(TAG, "현재 파일 MD5: $currentMD5")
+
+                            if (currentMD5 == sttModelData.md5) {
+                                Log.d(TAG, "MD5가 일치함. 다운로드 불필요")
+                                _progress.value = 100.0
+                            } else {
+                                Log.d(TAG, "MD5가 다름. 파일 업데이트 필요")
+                                Log.d(TAG, "기존 파일 삭제")
+                                file.delete()
+
+                                // 새 파일 다운로드
+                                isDownloading = true
+                                _progress.value = 0.0
+                                try {
+                                    withContext(NonCancellable) {
+                                        downloadFile(
+                                            sttModelData.downloadLink,
+                                            _progress,
+                                            sttModelData.md5
+                                        )
+                                    }
+                                    _progress.value = 100.0
+                                    Log.d(TAG, "GGML 파일 업데이트 완료")
+                                } finally {
+                                    isDownloading = false
+                                }
+                            }
+                        } else {
+                            Log.d(TAG, "GGML 파일이 존재하지 않음. 다운로드 시작")
+                            isDownloading = true
+                            _progress.value = 0.0
+                            try {
+                                withContext(NonCancellable) {
+                                    downloadFile(
+                                        sttModelData.downloadLink,
+                                        _progress,
+                                        sttModelData.md5
+                                    )
+                                }
+                                _progress.value = 100.0
+                                Log.d(TAG, "GGML 파일 다운로드 완료")
+                            } finally {
+                                isDownloading = false
+                            }
+                        }
+                    },
+                    onFailure = { error ->
+                        Log.e(TAG, "STT 모델 정보 요청 실패", error)
+                        _progress.value = -1.0
+                    }
+                )
             } catch (e: kotlinx.coroutines.CancellationException) {
                 Log.d(TAG, "GGML 파일 다운로드가 취소되었습니다 (정상적인 액티비티 종료)")
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "GGML 파일 다운로드 실패", e)
                 _progress.value = -1.0
+            } finally {
+                isDownloading = false
             }
         }
     }
@@ -167,11 +223,12 @@ class SplashViewModel @Inject constructor(
         val filesExist = checkRequiredFiles()
 
         if (!filesExist) {
-            // 파일 다운로드 필요
+            Log.d(TAG, "필수 파일이 없음. SplashActivity에서 ensureGgmlFile()로 다운로드 처리")
             _requiresDownload.value = true
-            startFileDownload()
+            // startFileDownload()를 호출하지 않음 - SplashActivity에서 처리
+            updateProgress(50, "모델 파일 다운로드 필요")
         } else {
-            // 파일이 이미 존재함
+            Log.d(TAG, "모든 필수 파일이 존재함")
             _requiresDownload.value = false
             completeInitialization()
         }
@@ -194,10 +251,39 @@ class SplashViewModel @Inject constructor(
     }
 
     /**
+     * 파일의 MD5 해시 계산
+     */
+    private fun calculateFileMD5(file: File): String {
+        return try {
+            if (!file.exists()) {
+                return ""
+            }
+
+            val digest = java.security.MessageDigest.getInstance("MD5")
+            file.inputStream().use { inputStream ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
+                }
+            }
+            val hashBytes = digest.digest()
+            hashBytes.fold("") { str, it -> str + "%02x".format(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "MD5 계산 중 오류 발생", e)
+            ""
+        }
+    }
+
+    /**
      * Whisper 모델 파일 확인
      */
     private fun checkWhisperModelFile(): Boolean {
-        return callGuardRepository.isFileExists(file)
+        val exists = callGuardRepository.isFileExists(file)
+        if (exists) {
+            Log.d(TAG, "Whisper 모델 파일이 존재함: ${file.absolutePath}")
+        }
+        return exists
     }
 
     /**
@@ -240,7 +326,9 @@ class SplashViewModel @Inject constructor(
                     }
 
                     // 실제 파일 다운로드 실행 - API에서 받은 링크와 MD5 사용
-                    downloadFile(sttModelData.downloadLink, downloadProgress, sttModelData.md5)
+                    withContext(NonCancellable) {
+                        downloadFile(sttModelData.downloadLink, downloadProgress, sttModelData.md5)
+                    }
 
                     // 다운로드 완료 후 초기화 완료
                     completeInitialization()
@@ -251,6 +339,10 @@ class SplashViewModel @Inject constructor(
                 }
             )
 
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // 코루틴 취소는 정상적인 상황이므로 로그만 남기고 다시 throw
+            Log.d(TAG, "파일 다운로드가 취소되었습니다 (정상적인 액티비티 종료)")
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "파일 다운로드 중 오류 발생", e)
             handleInitializationError("파일 다운로드 실패: ${e.message}")
@@ -262,9 +354,9 @@ class SplashViewModel @Inject constructor(
         progressFlow: MutableStateFlow<Double> = MutableStateFlow(0.0),
         expectedMD5: String? = null
     ) {
-        Log.d(TAG, "파일 다운로드 시작: $url")
+        Log.d(TAG, "[ViewModel] Repository에 파일 다운로드 요청: $url")
         if (expectedMD5 != null) {
-            Log.d(TAG, "MD5 검증 활성화: $expectedMD5")
+            Log.d(TAG, "[ViewModel] MD5 검증 활성화: $expectedMD5")
         }
 
         try {
@@ -272,15 +364,15 @@ class SplashViewModel @Inject constructor(
 
             result.fold(
                 onSuccess = {
-                    Log.d(TAG, "파일 다운로드 완료")
+                    Log.d(TAG, "[ViewModel] Repository로부터 다운로드 완료 응답 받음")
                 },
                 onFailure = { error ->
-                    Log.e(TAG, "파일 다운로드 실패", error)
+                    Log.e(TAG, "[ViewModel] Repository로부터 다운로드 실패 응답 받음", error)
                     throw error
                 }
             )
         } catch (e: Exception) {
-            Log.e(TAG, "다운로드 중 예외 발생", e)
+            Log.e(TAG, "[ViewModel] 다운로드 중 예외 발생", e)
             throw e
         }
     }
