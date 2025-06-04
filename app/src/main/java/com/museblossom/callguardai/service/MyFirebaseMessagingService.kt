@@ -31,18 +31,30 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      */
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
-        
-        Log.d(TAG, "FCM 메시지 수신: ${remoteMessage.from}")
+
+        Log.d(TAG, "FCM 메시지 수신 상세 정보:")
+        Log.d(TAG, "  - From: ${remoteMessage.from}")
+        Log.d(TAG, "  - MessageId: ${remoteMessage.messageId}")
+        Log.d(TAG, "  - MessageType: ${remoteMessage.messageType}")
+        Log.d(TAG, "  - Data size: ${remoteMessage.data.size}")
+        Log.d(TAG, "  - Data: ${remoteMessage.data}")
+        Log.d(TAG, "  - Notification: ${remoteMessage.notification}")
+
+        // 알림 페이로드가 있는 경우 상세 로그
+        remoteMessage.notification?.let { notification ->
+            Log.d(TAG, "알림 상세:")
+            Log.d(TAG, "  - Title: ${notification.title}")
+            Log.d(TAG, "  - Body: ${notification.body}")
+            Log.d(TAG, "  - ClickAction: ${notification.clickAction}")
+            Log.d(TAG, "  - Tag: ${notification.tag}")
+        }
 
         // 데이터 페이로드 처리
         if (remoteMessage.data.isNotEmpty()) {
-            Log.d(TAG, "메시지 데이터: ${remoteMessage.data}")
+            Log.d(TAG, "데이터 메시지 처리 시작")
             handleDataMessage(remoteMessage.data)
-        }
-
-        // 알림 페이로드 처리
-        remoteMessage.notification?.let { notification ->
-            Log.d(TAG, "메시지 알림: ${notification.title} - ${notification.body}")
+        } else {
+            Log.d(TAG, "데이터 메시지가 비어있음")
         }
     }
 
@@ -53,7 +65,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         try {
             val eventType = data["eventType"]
             val probability = data["probability"]
-
+            Log.d(TAG, "메시지 알림: ${eventType} - ${data}")
             when (eventType) {
                 FCMEventData.EVENT_TYPE_DEEP_VOICE -> {
                     Log.d(TAG, "딥보이스 감지 알림 수신 - 확률: $probability%")
