@@ -86,7 +86,8 @@ class SplashActivity : AppCompatActivity() {
 
         val logoImage = binding.logo
         val logoText = binding.logoText
-        statusTextView = binding.tvStatus
+        val loadingText = binding.loadingSta
+        statusTextView = binding.downloadSt
         progressBar = binding.progressBar
 
         fadeInViewsSequentially(logoImage, logoText, 1000L)
