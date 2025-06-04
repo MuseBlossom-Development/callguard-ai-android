@@ -28,6 +28,7 @@ import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityMainBinding
 import com.museblossom.callguardai.databinding.PermissionDialogBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
+import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
 import com.museblossom.callguardai.presentation.viewmodel.MainViewModel
 import com.museblossom.callguardai.util.etc.MyAccessibilityService
 import com.orhanobut.dialogplus.DialogPlus
@@ -75,6 +76,7 @@ class MainActivity : AppCompatActivity() {
 
     // View Binding
     private lateinit var binding: ActivityMainBinding
+    lateinit var callGuardRepository: CallGuardRepositoryInterface
 
     // ViewModel - 단일 데이터 소스
     private val viewModel: MainViewModel by viewModels()
@@ -91,11 +93,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate 호출")
 
+        // EtcPermissonActivity에 MainActivity가 실행되었음을 알림
+        EtcPermissonActivity.setMainActivityLaunched(true)
+
         initializeUI()
         observeViewModel()
         checkInitialPermissions()
         logDeviceInfo()
-        // initializeFCM() // 여기서 호출하지 않음
+        initializeFCM() // 여기서 호출하지 않음
     }
 
     override fun onResume() {
@@ -117,6 +122,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         Log.d(TAG, "onDestroy 호출")
+
+        // EtcPermissonActivity에 MainActivity가 종료되었음을 알림
+        EtcPermissonActivity.setMainActivityLaunched(false)
 
         // 다이얼로그 정리
         dialogPlus?.dismiss()

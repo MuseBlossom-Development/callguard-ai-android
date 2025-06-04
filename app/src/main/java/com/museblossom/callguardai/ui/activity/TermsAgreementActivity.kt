@@ -10,9 +10,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,10 +33,13 @@ import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
 import com.museblossom.callguardai.data.model.LoginData
+import com.museblossom.callguardai.ui.activity.LoginActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
+import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
 
 @AndroidEntryPoint
 class TermsAgreementActivity : ComponentActivity() {
@@ -43,16 +51,21 @@ class TermsAgreementActivity : ComponentActivity() {
     @Inject
     lateinit var callGuardRepository: CallGuardRepositoryInterface
     val auth = FirebaseAuth.getInstance()
-    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
+        // 상태바 색상을 흰색으로 설정
+        window.statusBarColor = android.graphics.Color.WHITE
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars =
+            true
+
         val googleIdToken = intent.getStringExtra("google_id_token") ?: run {
             Log.e(TAG, "구글 ID 토큰이 없습니다.")
             Toast.makeText(this, "인증 정보가 없습니다.", Toast.LENGTH_SHORT).show()
             finish()
             return
         }
+
 
         Log.d(TAG, "구글 ID 토큰을 받았습니다. 토큰 길이: ${googleIdToken.length}")
 
@@ -63,13 +76,15 @@ class TermsAgreementActivity : ComponentActivity() {
                         sendTokenToServer(googleIdToken, agreedTerms)
                     },
                     onBackPressed = {
+                        val intent = Intent(this@TermsAgreementActivity, LoginActivity::class.java)
+                        startActivity(intent)
                         finish()
                     }
                 )
             }
         }
     }
-    
+
     private fun sendTokenToServer(googleIdToken: String, agreedTerms: Map<String, Boolean>) {
         Log.i(TAG, "서버로 토큰을 전송합니다.")
         Log.d(TAG, "약관 동의 상태: $agreedTerms")
@@ -85,14 +100,13 @@ class TermsAgreementActivity : ComponentActivity() {
 
                         // 마케팅 동의가 있으면 별도로 업데이트
                         val agreedToMarketing = agreedTerms["marketing"] ?: false
-                        if (agreedToMarketing) {
-                            Log.d(TAG, "마케팅 동의 업데이트 중...")
-                            callGuardRepository.updateMarketingAgreement(true)
-                                .onFailure { e ->
-                                    Log.e(TAG, "마케팅 동의 업데이트 실패", e)
-                                    // 마케팅 동의 실패는 무시하고 진행
-                                }
-                        }
+                        val marketingAgreement = if (agreedToMarketing) "Y" else "N"
+                        Log.d(TAG, "마케팅 동의 업데이트 중... 값: $marketingAgreement")
+                        callGuardRepository.updateMarketingAgreement(marketingAgreement)
+                            .onFailure { e ->
+                                Log.e(TAG, "마케팅 동의 업데이트 실패", e)
+                                // 마케팅 동의 실패는 무시하고 진행
+                            }
 
                         // 서버 회원가입 성공 후 Firebase Auth에 로그인
                         val credential = GoogleAuthProvider.getCredential(googleIdToken, null)
@@ -129,11 +143,15 @@ class TermsAgreementActivity : ComponentActivity() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "서버 통신 중 오류 발생", e)
-                Toast.makeText(this@TermsAgreementActivity, "서버 통신 중 오류가 발생했습니다.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@TermsAgreementActivity,
+                    "서버 통신 중 오류가 발생했습니다.",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
-    
+
     private fun proceedToMain() {
         Log.i(TAG, "메인 화면으로 이동합니다.")
         val intent = Intent(this, SplashActivity::class.java)
@@ -143,6 +161,7 @@ class TermsAgreementActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TermsAgreementScreen(
     onAgreementComplete: (Map<String, Boolean>) -> Unit,
@@ -152,171 +171,206 @@ fun TermsAgreementScreen(
     var termsChecked by remember { mutableStateOf(false) }
     var privacyChecked by remember { mutableStateOf(false) }
     var marketingChecked by remember { mutableStateOf(false) }
-    
-    LaunchedEffect(termsChecked, privacyChecked, marketingChecked) {
-        allChecked = termsChecked && privacyChecked && marketingChecked
+
+    LaunchedEffect(termsChecked, privacyChecked) {
+        allChecked = termsChecked && privacyChecked
     }
-    
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+        color = Color.White
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = "서비스 이용약관",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            Text(
-                text = "CallGuard AI 서비스를 이용하시려면\n아래 약관에 동의해 주세요.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-            
-            // 전체 동의
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        allChecked = !allChecked
-                        termsChecked = allChecked
-                        privacyChecked = allChecked
-                        marketingChecked = allChecked
-                    },
-                colors = CardDefaults.cardColors(
-                    containerColor = if (allChecked) MaterialTheme.colorScheme.primaryContainer 
-                                   else MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (allChecked) Icons.Filled.CheckCircle 
-                                     else Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = if (allChecked) MaterialTheme.colorScheme.primary 
-                               else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "모두 동의합니다",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            // 개별 약관들
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                // 서비스 이용약관 (필수)
-                TermsItem(
-                    title = "[필수] 서비스 이용약관",
-                    checked = termsChecked,
-                    onCheckedChange = { termsChecked = it },
-                    onDetailClick = { /* TODO: 약관 상세 보기 */ }
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // 개인정보 처리방침 (필수)
-                TermsItem(
-                    title = "[필수] 개인정보 처리방침",
-                    checked = privacyChecked,
-                    onCheckedChange = { privacyChecked = it },
-                    onDetailClick = { /* TODO: 개인정보 처리방침 상세 보기 */ }
-                )
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // 마케팅 정보 수신 (선택)
-                TermsItem(
-                    title = "[선택] 마케팅 정보 수신 동의",
-                    checked = marketingChecked,
-                    onCheckedChange = { marketingChecked = it },
-                    onDetailClick = { /* TODO: 마케팅 약관 상세 보기 */ },
-                    isOptional = true
-                )
-            }
-            
-            // 동의하고 시작하기 버튼
-            Button(
-                onClick = {
-                    if (termsChecked && privacyChecked) {
-                        onAgreementComplete(
-                            mapOf(
-                                "terms" to termsChecked,
-                                "privacy" to privacyChecked,
-                                "marketing" to marketingChecked
-                            )
+            // TopAppBar with back button
+            CenterAlignedTopAppBar(
+                title = { },
+                navigationIcon = {
+                    IconButton(onClick = { onBackPressed() }) {
+                        Icon(
+                            imageVector = Icons.Filled.ArrowBack,
+                            contentDescription = "뒤로가기",
+                            tint = Color.Black
                         )
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = termsChecked && privacyChecked,
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Text(
-                    text = "동의하고 시작하기",
-                    style = MaterialTheme.typography.titleMedium
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.White
                 )
+            )
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp)
+            ) {
+                // Title
+                Text(
+                    text = "이용 약관 동의",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                // Subtitle
+                Text(
+                    text = "필수항목 및 선택항목 약관에 ㄱ동의해 주세요.",
+                    fontSize = 16.sp,
+                    color = Color.Black,
+                    modifier = Modifier.padding(bottom = 32.dp)
+                )
+
+                // All agree section
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            allChecked = !allChecked
+                            termsChecked = allChecked
+                            privacyChecked = allChecked
+                            marketingChecked = allChecked
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFFF9F9F9)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = if (allChecked) Icons.Outlined.CheckCircle
+                            else Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = if (allChecked) Color(0xFF2196F3) else Color.Gray,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = "전체 동의하기",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.Black
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Individual terms
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Terms of service
+                    TermsItemNew(
+                        title = "[필수] 서비스 이용약관",
+                        checked = termsChecked,
+                        onCheckedChange = { termsChecked = it },
+                        onDetailClick = { /* TODO: 약관 상세 보기 */ }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Privacy policy
+                    TermsItemNew(
+                        title = "[필수] 개인정보 처리방침",
+                        checked = privacyChecked,
+                        onCheckedChange = { privacyChecked = it },
+                        onDetailClick = { /* TODO: 개인정보 처리방침 상세 보기 */ }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Marketing agreement
+                    TermsItemNew(
+                        title = "[선택] 마케팅 정보 수신 동의",
+                        checked = marketingChecked,
+                        onCheckedChange = { marketingChecked = it },
+                        onDetailClick = { /* TODO: 마케팅 약관 상세 보기 */ }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Agree and proceed button
+                Button(
+                    onClick = {
+                        if (termsChecked && privacyChecked) {
+                            onAgreementComplete(
+                                mapOf(
+                                    "terms" to termsChecked,
+                                    "privacy" to privacyChecked,
+                                    "marketing" to marketingChecked
+                                )
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    enabled = termsChecked && privacyChecked,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF41BCD8),
+                        disabledContainerColor = Color(0xFFF3F3F3)
+                    ),
+                    shape = RoundedCornerShape(5.dp)
+                ) {
+                    Text(
+                        text = "동의하고 가입하기",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (!allChecked) Color(0xFFB5B5B5)
+                        else Color.White
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun TermsItem(
+fun TermsItemNew(
     title: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    onDetailClick: () -> Unit,
-    isOptional: Boolean = false
+    onDetailClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 8.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = onCheckedChange
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = null,
+            tint = if (checked) Color(0xFF4FC3F7) else Color.Gray.copy(alpha = 0.3f),
+            modifier = Modifier.size(24.dp)
         )
-        
-        Spacer(modifier = Modifier.width(8.dp))
-        
+
+        Spacer(modifier = Modifier.width(12.dp))
+
         Text(
             text = title,
-            style = MaterialTheme.typography.bodyLarge,
+            fontSize = 16.sp,
+            color = Color.Black,
             modifier = Modifier.weight(1f)
         )
-        
-        Text(
-            text = "보기",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.primary,
-            textDecoration = TextDecoration.Underline,
-            modifier = Modifier.clickable { onDetailClick() }
+
+        Icon(
+            imageVector = Icons.Filled.KeyboardArrowRight,
+            contentDescription = "상세보기",
+            tint = Color.Gray,
+            modifier = Modifier
+                .padding(8.dp)
+                .clickable { onDetailClick() }
+                .size(24.dp)
         )
     }
 }

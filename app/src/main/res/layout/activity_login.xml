@@ -1,89 +1,89 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    android:background="@color/white"
     android:gravity="center"
-    android:padding="32dp"
-    android:background="@color/white">
+    android:orientation="vertical">
 
     <!-- 로고 영역 -->
+
     <ImageView
-        android:layout_width="120dp"
-        android:layout_height="120dp"
+        android:id="@+id/logo"
+        android:layout_width="108dp"
+        android:layout_height="107dp"
+        android:layout_marginTop="168dp"
         android:src="@drawable/app_logo"
-        android:layout_marginBottom="32dp" />
+        app:layout_constraintBottom_toTopOf="@id/logo_text"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- 앱 이름 -->
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="CallGuard AI"
-        android:textSize="28sp"
-        android:textStyle="bold"
-        android:textColor="@color/black"
-        android:layout_marginBottom="16dp" />
+    <ImageView
+        android:id="@+id/logo_text"
+        android:layout_width="99dp"
+        android:layout_height="14dp"
+        android:layout_marginTop="8dp"
+        android:src="@drawable/callguardai_logo"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/logo"
+        tools:alpha="1" />
 
-    <!-- 설명 텍스트 -->
+
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="안전한 통화를 위한 AI 보호 서비스"
-        android:textSize="16sp"
-        android:textColor="@color/gray"
+        android:id="@+id/ai_"
+        android:layout_width="148dp"
+        android:layout_height="60dp"
+        android:layout_marginTop="324dp"
+        android:fontFamily="@font/pretendard_medium"
+        android:gravity="center_horizontal|top"
+        android:text="안전한 통화를 위한\nAI 보호 서비스"
+        android:textColor="#4D4D4D"
+        android:textSize="19sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/sns_"
+        android:layout_width="148dp"
+        android:layout_height="20dp"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="220dp"
+        android:fontFamily="@font/pretendard_medium"
         android:gravity="center"
-        android:layout_marginBottom="48dp" />
+        android:text="SNS 계정으로 간편 가입하기"
+        android:textColor="#909090"
+        android:textSize="12sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/ai_" />
 
-    <!-- 구글 로그인 버튼 -->
-    <androidx.cardview.widget.CardView
+
+    <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_google_login"
-        android:layout_width="match_parent"
-        android:layout_height="56dp"
-        android:layout_marginBottom="16dp"
-        app:cardCornerRadius="8dp"
-        app:cardElevation="2dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:foreground="?android:attr/selectableItemBackground">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:padding="12dp">
-
-            <ImageView
-                android:layout_width="24dp"
-                android:layout_height="24dp"
-                android:src="@drawable/ic_google"
-                android:layout_marginEnd="12dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Google로 로그인"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:textColor="@color/black" />
-
-        </LinearLayout>
-
-    </androidx.cardview.widget.CardView>
-
-    <!-- 건너뛰기 버튼 -->
-    <TextView
-        android:id="@+id/btn_skip"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="건너뛰기"
-        android:textSize="14sp"
-        android:textColor="@color/gray"
-        android:padding="12dp"
-        android:clickable="true"
-        android:focusable="true"
-        android:background="?android:attr/selectableItemBackground"
-        android:layout_marginTop="16dp" />
-
-</LinearLayout>
+        android:layout_width="207dp"
+        android:layout_height="48dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginHorizontal="32dp"
+        android:text="Google로 가입하기"
+        android:textColor="@color/black"
+        android:textSize="13sp"
+        app:backgroundTint="@android:color/white"
+        app:cornerRadius="5dp"
+        app:icon="@drawable/ic_google"
+        app:iconGravity="textStart"
+        app:iconPadding="6dp"
+        app:iconSize="18dp"
+        app:iconTint="@null"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/sns_"
+        app:strokeColor="#E4E4E4"
+        app:strokeWidth="1dp" />
+</androidx.constraintlayout.widget.ConstraintLayout>

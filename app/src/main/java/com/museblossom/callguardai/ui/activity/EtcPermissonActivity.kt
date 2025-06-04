@@ -29,6 +29,15 @@ class EtcPermissonActivity : AppCompatActivity() {
     private var isRetryPermission = false
     private var permissionCheckJob: Job? = null
 
+    companion object {
+        private const val REQUEST_PERMISSION_CODE = 0
+        private var isMainActivityLaunched = false
+
+        fun setMainActivityLaunched(launched: Boolean) {
+            isMainActivityLaunched = launched
+        }
+    }
+
     // MainActivity 실행 및 현재 Activity 종료를 위한 통합 함수
     private fun launchMainAndFinish() {
         if (!isFinishing && !isChangingConfigurations) { // 액티비티가 유효할 때만 실행
@@ -36,9 +45,17 @@ class EtcPermissonActivity : AppCompatActivity() {
                 "Permission",
                 "launchMainAndFinish 호출됨, MainActivity 시작 및 EtcPermissonActivity 종료"
             )
+
+            // MainActivity가 이미 실행되었는지 확인
+            if (isMainActivityLaunched) {
+                Log.d("Permission", "MainActivity가 이미 실행 중입니다. 중복 실행 방지.")
+                finish()
+                return
+            }
+
+            isMainActivityLaunched = true
             val intent = Intent(this, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             startActivity(intent)
             finish()
         }
@@ -180,7 +197,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         } else {
             // 접근성 권한이 있으면 메인으로 이동
             val intent = Intent(this@EtcPermissonActivity, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             startActivity(intent)
             finish()
         }
@@ -408,9 +425,5 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.VIBRATE
                 )
         }
-    }
-
-    companion object {
-        private const val REQUEST_PERMISSION_CODE = 0
     }
 }

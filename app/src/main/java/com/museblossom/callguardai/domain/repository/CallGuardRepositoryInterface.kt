@@ -24,7 +24,7 @@ interface CallGuardRepositoryInterface {
     /**
      * 마케팅 동의 업데이트
      */
-    suspend fun updateMarketingAgreement(isAgreeMarketing: Boolean): Result<Unit>
+    suspend fun updateMarketingAgreement(isAgreeMarketing: String): Result<Unit>
 
     /**
      * Push Token 갱신

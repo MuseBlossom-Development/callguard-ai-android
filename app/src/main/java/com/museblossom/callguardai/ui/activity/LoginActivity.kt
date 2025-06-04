@@ -39,14 +39,8 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun setupUI() {
-        binding.btnSkip.visibility = GONE
         binding.btnGoogleLogin.setOnClickListener {
             signInWithGoogle()
-        }
-
-        binding.btnSkip.setOnClickListener {
-            // 건너뛰기 기능 (필요시)
-//            proceedToMain()
         }
     }
 
