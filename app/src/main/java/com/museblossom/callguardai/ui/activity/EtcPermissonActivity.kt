@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
@@ -31,42 +32,33 @@ class EtcPermissonActivity : AppCompatActivity() {
 
     companion object {
         private const val REQUEST_PERMISSION_CODE = 0
-        private var isMainActivityLaunched = false
-
-        fun setMainActivityLaunched(launched: Boolean) {
-            isMainActivityLaunched = launched
-        }
+        private const val REQUEST_BATTERY_OPTIMIZATION = 1
     }
 
-    // MainActivity 실행 및 현재 Activity 종료를 위한 통합 함수
+    // 앱 종료를 위한 함수
     private fun launchMainAndFinish() {
         if (!isFinishing && !isChangingConfigurations) { // 액티비티가 유효할 때만 실행
             Log.d(
                 "Permission",
-                "launchMainAndFinish 호출됨, MainActivity 시작 및 EtcPermissonActivity 종료"
+                "권한 설정 완료, 백그라운드 서비스로 동작합니다."
             )
 
-            // MainActivity가 이미 실행되었는지 확인
-            if (isMainActivityLaunched) {
-                Log.d("Permission", "MainActivity가 이미 실행 중입니다. 중복 실행 방지.")
-                finish()
-                return
-            }
+            // 설정 완료 메시지 표시
+            Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG)
+                .show()
 
-            isMainActivityLaunched = true
-            val intent = Intent(this, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-            finish()
+            // 앱 종료
+            finishAffinity()
         }
     }
 
     override fun onResume() {
         super.onResume()
         Log.d("Permission", "리줌 퍼미션")
-//        if (isRetryPermission) {
-//            checkAndRequestPermissions()
-//        }
+    }
+
+    override fun onPause() {
+        super.onPause()
     }
 
 
@@ -142,7 +134,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         override fun onPermissionGranted() {
 //            Toast.makeText(this@EtcPermissonActivity, "권한 허가", Toast.LENGTH_SHORT).show()
 //            //TODO your task
-            checkAndLaunchMainActivityOrRequestAccessibility()
+            checkBatteryOptimization()
         }
 
         override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
@@ -171,6 +163,66 @@ class EtcPermissonActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnoringBatteryOptimizations =
+                powerManager.isIgnoringBatteryOptimizations(packageName)
+
+            if (!isIgnoringBatteryOptimizations) {
+                Log.d("Permission", "배터리 최적화 해제 필요")
+                showBatteryOptimizationDialog()
+            } else {
+                Log.d("Permission", "배터리 최적화 이미 해제됨")
+                checkAndLaunchMainActivityOrRequestAccessibility()
+            }
+        } else {
+            Log.d("Permission", "Android 6.0 미만 - 배터리 최적화 체크 불필요")
+            checkAndLaunchMainActivityOrRequestAccessibility()
+        }
+    }
+
+    private fun showBatteryOptimizationDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("배터리 최적화 해제 필요")
+            .setMessage("CallGuardAI가 24시간 실시간으로 보이스피싱을 감지하려면 배터리 최적화에서 제외되어야 합니다.\n\n제외하지 않으면:\n• 통화 감지 실패\n• 보이스피싱 탐지 불가\n• 앱이 자동 종료됨")
+            .setPositiveButton("설정하기") { _, _ ->
+                requestBatteryOptimizationExclusion()
+            }
+            .setNegativeButton("건너뛰기") { _, _ ->
+                Log.w("Permission", "사용자가 배터리 최적화 해제를 거부함")
+                checkAndLaunchMainActivityOrRequestAccessibility()
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun requestBatteryOptimizationExclusion() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivityForResult(intent, REQUEST_BATTERY_OPTIMIZATION)
+            }
+        } catch (e: Exception) {
+            Log.e("Permission", "배터리 최적화 설정 화면 열기 실패", e)
+            checkAndLaunchMainActivityOrRequestAccessibility()
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        when (requestCode) {
+            REQUEST_BATTERY_OPTIMIZATION -> {
+                Log.d("Permission", "배터리 최적화 설정에서 돌아옴")
+                // 설정 결과와 관계없이 다음 단계로 진행
+                checkAndLaunchMainActivityOrRequestAccessibility()
+            }
+        }
+    }
+
     private fun checkAndLaunchMainActivityOrRequestAccessibility() {
         if (isAccessibilityServiceEnabled(
                 this,
@@ -195,11 +247,10 @@ class EtcPermissonActivity : AppCompatActivity() {
             // 접근성 권한이 없으면 안내 다이얼로그 표시
             showAccessibilityGuideDialog()
         } else {
-            // 접근성 권한이 있으면 메인으로 이동
-            val intent = Intent(this@EtcPermissonActivity, MainActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            startActivity(intent)
-            finish()
+            // 설정 완료 메시지 표시 후 앱 종료
+            Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG)
+                .show()
+            finishAffinity()
         }
     }
 
@@ -321,7 +372,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         permissionCheckJob = lifecycleScope.launch {
             var checkCount = 0
             while (isActive) {
-                delay(1000) // 1초마다 체크
+                delay(500) // 0.5초마다 체크 (기존 1초에서 단축)
                 checkCount++
 
                 if (isAccessibilityServiceEnabled(
@@ -354,6 +405,17 @@ class EtcPermissonActivity : AppCompatActivity() {
         finish()
     }
 
+//    private class AccessibilityReceiver : BroadcastReceiver() {
+//        override fun onReceive(context: Context?, intent: Intent?) {
+//            if (intent?.action == Intent.ACTION_ACCESSIBILITY_SERVICE) {
+//                // 접근성 서비스 활성화 시 액티비티 종료
+//                val activity = (context as? EtcPermissonActivity)
+//                activity?.let {
+//                    it.launchMainAndFinish()
+//                }
+//            }
+//        }
+//    }
 
     private fun setPermission(permissionListener: PermissionListener) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -363,16 +425,14 @@ class EtcPermissonActivity : AppCompatActivity() {
                 .setPermissions(Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
                     Manifest.permission.POST_NOTIFICATIONS,
-//                    Manifest.permission.READ_MEDIA_AUDIO,
-                    // Removed READ_MEDIA_AUDIO
-//                    Manifest.permission.MANAGE_EXTERNAL_STORAGE,
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
-//                    Manifest.permission.READ_CALL_LOG,
-                    // Removed READ_CALL_LOG
+                    Manifest.permission.READ_CONTACTS,
+                    Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE)
+                    Manifest.permission.VIBRATE
+                )
                 .check()
         }else if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU){
             TedPermission.create()
@@ -380,15 +440,13 @@ class EtcPermissonActivity : AppCompatActivity() {
                 .setDeniedMessage("권한이 거부되었습니다. 설정 > 권한에서 허용해주세요.")
                 .setPermissions(
                     Manifest.permission.READ_MEDIA_AUDIO,
-//                    Manifest.permission.READ_MEDIA_VIDEO,
-//                    Manifest.permission.READ_MEDIA_IMAGES,
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.POST_NOTIFICATIONS,
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
-//                    Manifest.permission.READ_CALL_LOG,
-                    // Removed READ_CALL_LOG
+                    Manifest.permission.READ_CONTACTS,
+                    Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
                     Manifest.permission.VIBRATE
                 )
@@ -404,6 +462,7 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
+                    Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
                     Manifest.permission.VIBRATE
@@ -420,10 +479,12 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.RECORD_AUDIO,
                     Manifest.permission.READ_PHONE_STATE,
                     Manifest.permission.READ_PHONE_NUMBERS,
+                    Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
                     Manifest.permission.VIBRATE
                 )
+                .check()
         }
     }
 }

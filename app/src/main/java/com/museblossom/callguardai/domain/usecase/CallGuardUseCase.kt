@@ -63,6 +63,19 @@ class CallGuardUseCase @Inject constructor(
     }
 
     /**
+     * CDN URL 요청 (통화 UUID 획득용)
+     */
+    suspend fun getCDNUrl(): Result<CDNUrlData> = withContext(dispatcher) {
+        try {
+            Log.d(TAG, "CDN URL 요청 (통화 UUID 획득)")
+            repository.getCDNUrl()
+        } catch (e: Exception) {
+            Log.e(TAG, "CDN URL 요청 실패", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * 오디오 파일 업로드 및 딥보이스 분석 요청
      */
     suspend fun uploadAudioForAnalysis(audioFile: File): Result<String> = withContext(dispatcher) {

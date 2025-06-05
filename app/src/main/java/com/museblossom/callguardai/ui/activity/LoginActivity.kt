@@ -10,6 +10,8 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.lifecycleScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -48,7 +50,7 @@ class LoginActivity : AppCompatActivity() {
         val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
             .setServerClientId(getString(R.string.default_web_client_id))
             .setFilterByAuthorizedAccounts(false)
-            .setAutoSelectEnabled(true)
+            .setAutoSelectEnabled(false)
             .build()
 
         val request: GetCredentialRequest = GetCredentialRequest.Builder()
@@ -63,8 +65,30 @@ class LoginActivity : AppCompatActivity() {
                 )
                 handleSignIn(result)
             } catch (e: GetCredentialException) {
-                Log.e("구글로그인", "자격증명 요청 오류", e)
-                Toast.makeText(this@LoginActivity, "로그인에 실패했습니다: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e("구글로그인", "자격증명 요청 오류: ${e::class.java.simpleName}", e)
+                when (e) {
+                    is NoCredentialException -> {
+                        Toast.makeText(
+                            this@LoginActivity,
+                            "Google 계정을 찾을 수 없습니다.\n설정 > 계정에서 Google 계정을 추가해주세요.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    is GetCredentialCancellationException -> {
+                        Toast.makeText(
+                            this@LoginActivity,
+                            "로그인이 취소되었습니다.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    else -> {
+                        Toast.makeText(
+                            this@LoginActivity,
+                            "Google 로그인에 실패했습니다.\nGoogle Play Services를 업데이트하거나 잠시 후 다시 시도해주세요.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
             }
         }
     }

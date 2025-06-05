@@ -8,7 +8,6 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import com.museblossom.callguardai.ui.activity.MainActivity
 
 
 class MyAccessibilityService : AccessibilityService() {
@@ -91,14 +90,14 @@ class MyAccessibilityService : AccessibilityService() {
 //        accessibilityServiceInfo.flags = 1
 //        accessibilityServiceInfo.eventTypes = -1
         // 접근성 권한이 활성화되었을 때 앱으로 돌아가도록 설정
-        Toast.makeText(this, "접근성 권한이 활성화되었습니다.", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG).show()
 
-        // MainActivity로 돌아가기 위한 인텐트를 생성합니다.
-        val intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) // 새로운 태스크로 시작하여 MainActivity로 이동
+        // 설정 화면을 닫기 위해 홈 화면으로 이동
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        startActivity(intent)
-
+        startActivity(homeIntent)
     }
 
     override fun onInterrupt() {

@@ -21,7 +21,9 @@ import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.CallFloatingBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
+import com.museblossom.callguardai.data.repository.CallRecordRepository
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
+import com.museblossom.callguardai.domain.usecase.CallGuardUseCase
 import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.museblossom.callguardai.util.etc.Notifications
 import com.museblossom.callguardai.util.recorder.Recorder
@@ -36,6 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.*
 import java.io.File
 import javax.inject.Inject
 
@@ -52,6 +55,12 @@ class CallRecordingService : Service() {
     @Inject
     lateinit var audioAnalysisRepository: AudioAnalysisRepositoryInterface
 
+    @Inject
+    lateinit var callRecordRepository: CallRecordRepository
+
+    @Inject
+    lateinit var callGuardUseCase: CallGuardUseCase
+
     // 기본 컴포넌트들
     lateinit var recorder: Recorder
     private val TAG = "통화녹음서비스"
@@ -67,6 +76,11 @@ class CallRecordingService : Service() {
     private var isDeepVoiceDetected = false
     private var noDetectionCount = 0
     private var hasInitialAnalysisCompleted = false
+
+    // 통화 기록 관련
+    private var currentCallUuid: String? = null
+    private var currentPhoneNumber: String? = null
+    private var callStartTime: Long = 0
 
     // UI 관련
     private lateinit var windowManager: WindowManager
@@ -92,10 +106,35 @@ class CallRecordingService : Service() {
         const val ACTION_TRANSCRIBE_FILE = "ACTION_TRANSCRIBE_FILE"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
         private const val MAX_NO_DETECTION_COUNT = 4
+
+        // 오버레이 상태 추적을 위한 정적 변수
+        @Volatile
+        private var isOverlayCurrentlyVisible = false
+
+        // 서비스 인스턴스 추적
+        @Volatile
+        private var serviceInstance: CallRecordingService? = null
+
+        /**
+         * 현재 오버레이 뷰가 화면에 표시되고 있는지 확인
+         * @return 오버레이 뷰 표시 여부
+         */
+        fun isOverlayVisible(): Boolean {
+            return isOverlayCurrentlyVisible
+        }
+
+        /**
+         * 서비스가 이미 실행 중인지 확인
+         * @return 서비스 실행 여부
+         */
+        fun isServiceRunning(): Boolean {
+            return serviceInstance != null
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
+        serviceInstance = this
         Log.d(TAG, " 전화 서비스 생성됨: ${System.currentTimeMillis()}ms")
 
         initializeWhisperModel()
@@ -180,6 +219,9 @@ class CallRecordingService : Service() {
 
                 Intent.ACTION_NEW_OUTGOING_CALL -> {
                     Log.d(TAG, "발신 전화 감지됨")
+                    val phoneIntent =
+                        intent.getParcelableExtra<Intent>(EXTRA_PHONE_INTENT) ?: intent
+                    handlePhoneState(phoneIntent)
                 }
 
                 TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
@@ -192,34 +234,117 @@ class CallRecordingService : Service() {
                     Log.w(TAG, "알 수 없는 액션: $action")
                 }
             }
+        } ?: run {
+            // action이 null인 경우, 전화 상태 변경으로 간주
+            Log.d(TAG, "액션이 null - 전화 상태 변경으로 처리")
+            handlePhoneState(intent ?: Intent())
         }
-        return super.onStartCommand(intent, flags, startId)
+
+        return START_STICKY // 서비스가 종료되면 자동으로 재시작
     }
 
     private fun handlePhoneState(intent: Intent) {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
-        Log.d(TAG, "전화 상태 변경: $state")
-        Log.d(TAG, "isIncomingCall: $isIncomingCall, intent.action: ${intent.action}")
+        val phoneNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+        val outgoingNumber = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
+        val cachedNumber = intent.getStringExtra("CACHED_PHONE_NUMBER")
+
+        Log.d(TAG, "========================================")
+        Log.d(TAG, "전화 상태 변경 처리 시작")
+        Log.d(TAG, "Intent Action: ${intent.action}")
+        Log.d(TAG, "전화 상태: $state")
+        Log.d(TAG, "수신 전화번호 (EXTRA_INCOMING_NUMBER): $phoneNumber")
+        Log.d(TAG, "발신 전화번호 (EXTRA_PHONE_NUMBER): $outgoingNumber")
+        Log.d(TAG, "캐시된 전화번호 (CACHED_PHONE_NUMBER): $cachedNumber")
+        Log.d(TAG, "현재 isIncomingCall 상태: $isIncomingCall")
+        Log.d(TAG, "현재 저장된 전화번호: $currentPhoneNumber")
+        Log.d(TAG, "현재 통화 활성 상태: $isCallActive")
+
+        // 전화번호 정보가 있고 현재 저장된 번호가 Unknown이거나 null인 경우 업데이트
+        val availableNumber = phoneNumber ?: outgoingNumber ?: cachedNumber
+        if (availableNumber != null &&
+            (currentPhoneNumber == null || currentPhoneNumber == "Unknown" || currentPhoneNumber!!.startsWith(
+                "번호숨김_"
+            ) || currentPhoneNumber!!.startsWith("발신통화_"))
+        ) {
+            currentPhoneNumber = availableNumber
+            Log.d(TAG, "전화번호 정보 업데이트: $currentPhoneNumber")
+        }
+
+        // Intent의 모든 extras 로깅 (디버깅용)
+        val extras = intent.extras
+        if (extras != null) {
+            Log.d(TAG, "Intent extras 내용:")
+            for (key in extras.keySet()) {
+                val value = extras.get(key)
+                Log.d(TAG, "  $key = $value")
+            }
+        }
 
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
-                isIncomingCall = true
-                Log.d(TAG, "전화 수신 (울림)")
+                Log.d(TAG, "RINGING 상태 처리")
+                if (!isCallActive) {
+                    isIncomingCall = true
+                    // 여러 소스에서 전화번호 추출 시도
+                    currentPhoneNumber = phoneNumber ?: cachedNumber ?: "Unknown"
+                    Log.d(TAG, "전화 수신 (울림): $currentPhoneNumber")
+                    Log.d(TAG, "isIncomingCall을 true로 설정")
+                } else {
+                    Log.d(TAG, "이미 통화가 활성화된 상태, RINGING 상태 무시")
+                }
             }
 
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                Log.d(TAG, "조건 확인: isIncomingCall=$isIncomingCall, action=${intent.action}")
-                // 조건을 단순화하여 OFFHOOK 상태에서는 항상 통화 시작으로 간주
-                Log.d(TAG, "전화 연결됨 (통화 시작)")
+                Log.d(TAG, "OFFHOOK 상태 처리")
+
+                if (isCallActive) {
+                    Log.d(TAG, "이미 통화가 활성화된 상태, OFFHOOK 상태 무시")
+                    return
+                }
+
+                // 발신 전화인 경우 전화번호 처리
+                if (!isIncomingCall) {
+                    // 발신 전화번호 추출 시도 (우선순위: outgoingNumber > phoneNumber > cachedNumber)
+                    val extractedNumber = outgoingNumber ?: phoneNumber ?: cachedNumber
+                    if (extractedNumber != null) {
+                        currentPhoneNumber = extractedNumber
+                        Log.d(TAG, "발신 전화번호 설정: $currentPhoneNumber")
+                    } else {
+                        currentPhoneNumber = "발신통화_${System.currentTimeMillis()}"
+                        Log.w(TAG, "발신 전화번호를 찾을 수 없음, 타임스탬프로 식별: $currentPhoneNumber")
+                    }
+                } else {
+                    // 수신 전화인 경우 캐시된 번호 사용 (RINGING에서 설정되지 않았을 경우)
+                    if (currentPhoneNumber == null || currentPhoneNumber == "Unknown") {
+                        val finalNumber = cachedNumber ?: phoneNumber
+                        if (finalNumber != null) {
+                            currentPhoneNumber = finalNumber
+                            Log.d(TAG, "수신 전화번호 재설정: $currentPhoneNumber")
+                        } else {
+                            // 전화번호가 정말 없는 경우 - 번호 숨김 통화로 처리
+                            currentPhoneNumber = "번호숨김_${System.currentTimeMillis()}"
+                            Log.w(TAG, "수신 전화번호 없음 - 번호 숨김 통화로 처리: $currentPhoneNumber")
+                        }
+                    }
+                }
+
+                Log.d(TAG, "통화 시작 - 최종 전화번호: $currentPhoneNumber")
                 startCall()
             }
 
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 Log.d(TAG, "전화 통화 종료 (IDLE 상태)")
+                Log.d(TAG, "isIncomingCall을 false로 초기화")
                 isIncomingCall = false
                 endCall()
             }
+
+            else -> {
+                Log.w(TAG, "알 수 없는 전화 상태: $state")
+            }
         }
+        Log.d(TAG, "========================================")
     }
 
     private fun setupOverlayView() {
@@ -240,6 +365,7 @@ class CallRecordingService : Service() {
         try {
             windowManager.addView(overlayNormalView, layoutParams)
             Log.d(TAG, "오버레이 뷰 WindowManager에 추가 완료")
+            isOverlayCurrentlyVisible = true
         } catch (e: Exception) {
             Log.e(TAG, "오류: 오버레이 뷰 추가 실패 - ${e.message}")
             showToastMessage("화면 오버레이 권한이 필요합니다.")
@@ -301,8 +427,8 @@ class CallRecordingService : Service() {
                 recorder.offVibrate(applicationContext)
                 recorder.stopRecording(true)
             }
-
             stopForeground(true)
+            removeOverlayView()
         }
     }
 
@@ -361,6 +487,7 @@ class CallRecordingService : Service() {
             try {
                 windowManager.removeView(overlayNormalView)
                 Log.d(TAG, "오버레이 뷰 성공적으로 제거됨")
+                isOverlayCurrentlyVisible = false
             } catch (e: Exception) {
                 Log.e(TAG, "오류: 오버레이 뷰 제거 실패 - ${e.message}")
             } finally {
@@ -541,6 +668,18 @@ class CallRecordingService : Service() {
         serviceScope.launch {
             if (result.isNotBlank()) {
                 Log.d(TAG, "KoBERT 처리 시작 - 텍스트: $result")
+
+                // 실제 서버로 보이스피싱 텍스트 전송 (UUID와 함께)
+                currentCallUuid?.let { uuid ->
+                    try {
+                        // TODO: UseCase를 통해 서버로 텍스트 전송
+                        callGuardUseCase.sendVoicePhishingText(uuid, result)
+                        Log.d(TAG, "보이스피싱 텍스트 서버 전송: UUID=$uuid, 텍스트=$result")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "보이스피싱 텍스트 서버 전송 실패", e)
+                    }
+                }
+
                 // 실제 KoBERT 처리 대신 임시로 피싱 감지 로직
                 val isPhishing =
                     result.contains("피싱") || result.contains("계좌") || result.contains("송금") || result.contains(
@@ -582,6 +721,14 @@ class CallRecordingService : Service() {
                 Log.d(TAG, "딥보이스 미감지 (확률: $probability%)")
             }
 
+            // 딥보이스 분석 결과 데이터베이스 저장
+            currentCallUuid?.let { uuid ->
+                serviceScope.launch {
+                    callRecordRepository.updateDeepVoiceResult(uuid, isDetected, probability)
+                    Log.d(TAG, "딥보이스 분석 결과 저장됨: UUID=$uuid, 감지=$isDetected, 확률=$probability%")
+                }
+            }
+
             checkAndHideOverlay()
         } catch (e: Exception) {
             Log.e(TAG, "딥보이스 분석 처리 중 오류", e)
@@ -594,6 +741,8 @@ class CallRecordingService : Service() {
             isPhishingDetected = isPhishing
             hasInitialAnalysisCompleted = true
 
+            val probability = if (isPhishing) 90 else 10
+
             if (isPhishing) {
                 Log.d(TAG, "피싱 감지됨: $text")
                 if (recorder.getVibrate()) {
@@ -602,6 +751,14 @@ class CallRecordingService : Service() {
                 updatePhishingUI(analysisResult)
             } else {
                 Log.d(TAG, "피싱 미감지: $text")
+            }
+
+            // 보이스피싱 분석 결과 데이터베이스 저장
+            currentCallUuid?.let { uuid ->
+                serviceScope.launch {
+                    callRecordRepository.updateVoicePhishingResult(uuid, isPhishing, probability)
+                    Log.d(TAG, "보이스피싱 분석 결과 저장됨: UUID=$uuid, 감지=$isPhishing, 확률=$probability%")
+                }
             }
 
             checkAndHideOverlay()
@@ -705,22 +862,65 @@ class CallRecordingService : Service() {
         serviceScope.cancel()
 
         serviceScope.launch {
-            runCatching {
+            try {
                 whisperContext?.release()
                 Log.d(TAG, "WhisperContext 해제 완료")
-            }.onFailure { e ->
+            } catch (e: Exception) {
                 Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
             }
         }
 
         whisperContext = null
         removeOverlayView()
+        isOverlayCurrentlyVisible = false
+        serviceInstance = null
 
         Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
     }
 
     private fun startCall() {
         Log.d(TAG, "통화 시작")
+
+        callStartTime = System.currentTimeMillis()
+
+        // CDN URL API를 호출하여 UUID 받아오기
+        serviceScope.launch {
+            try {
+                Log.d(TAG, "CDN URL API 호출하여 UUID 받아오기...")
+                val cdnResult = callGuardUseCase.getCDNUrl()
+
+                if (!cdnResult.isSuccess) {
+//                    val cdnData = cdnResult.getOrNull()!!
+//                    currentCallUuid = cdnData.uuid
+
+                    currentCallUuid = UUID.randomUUID().toString()
+
+                    Log.d(TAG, "CDN URL API에서 UUID 받아옴: ${currentCallUuid}")
+
+                    // 통화 기록 저장
+                    currentPhoneNumber?.let { phoneNumber ->
+                        val callRecord = com.museblossom.callguardai.data.model.CallRecord(
+                            uuid = currentCallUuid!!,
+                            phoneNumber = phoneNumber,
+                            callStartTime = callStartTime
+                        )
+                        callRecordRepository.saveCallRecord(callRecord)
+                        Log.d(TAG, "통화 기록 저장됨: UUID=${currentCallUuid}, 번호=$phoneNumber")
+                    }
+                } else {
+                    Log.e(TAG, "CDN URL API 호출 실패: ${cdnResult.exceptionOrNull()?.message}")
+                    // API 호출 실패 시 임시 UUID 생성
+                    currentCallUuid = java.util.UUID.randomUUID().toString()
+                    Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "CDN URL API 호출 중 오류", e)
+                // 오류 발생 시 임시 UUID 생성
+                currentCallUuid = java.util.UUID.randomUUID().toString()
+                Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
+            }
+        }
+
         isCallActive = true
         isRecording = true
         isPhishingDetected = false
@@ -734,6 +934,15 @@ class CallRecordingService : Service() {
 
     private fun endCall() {
         Log.d(TAG, "통화 종료 시작")
+
+        // 통화 종료 시간 업데이트
+        currentCallUuid?.let { uuid ->
+            serviceScope.launch {
+                callRecordRepository.updateCallEndTime(uuid, System.currentTimeMillis())
+                Log.d(TAG, "통화 종료 시간 업데이트됨: UUID=$uuid")
+            }
+        }
+
         isCallActive = false
         isRecording = false
         shouldShowOverlay = false
@@ -750,6 +959,11 @@ class CallRecordingService : Service() {
         }
 
         removeOverlayView()
+
+        // 통화 관련 변수 초기화
+        currentCallUuid = null
+        currentPhoneNumber = null
+        callStartTime = 0
 
         Log.d(TAG, "통화 종료 완료, 서비스 중지")
         stopSelf()

@@ -31,6 +31,7 @@ import com.denzcoskun.imageslider.constants.ScaleTypes
 import com.denzcoskun.imageslider.models.SlideModel
 import com.google.firebase.auth.FirebaseAuth
 import com.mackhartley.roundedprogressbar.RoundedProgressBar
+import com.museblossom.callguardai.CallGuardApplication
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivitySplashBinding
 import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
@@ -193,6 +194,10 @@ class SplashActivity : AppCompatActivity() {
     private fun proceedToPermissionCheck() {
         statusTextView.text = "권한 확인 중..."
         dialogSetting()
+
+        // 배터리 최적화 제외 요청
+        requestBatteryOptimizationExclusion()
+
         if (!Settings.canDrawOverlays(applicationContext)) {
             showOverlayPermissionDialog(applicationContext)
         } else {
@@ -278,13 +283,6 @@ class SplashActivity : AppCompatActivity() {
         }
     }
 
-    private fun moveToMainActivity() {
-        var intent = Intent(this@SplashActivity, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-        finish()
-    }
-
     private fun moveToEtcPermissionActivity() {
         var intent = Intent(this@SplashActivity, EtcPermissonActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -367,8 +365,16 @@ class SplashActivity : AppCompatActivity() {
                     bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     startActivity(bringToFrontIntent)
 
-                    // 다음 화면으로 이동
-                    moveToMainActivity()
+                    // 설정 완료 메시지 표시 후 앱 종료
+                    Toast.makeText(
+                        this@SplashActivity,
+                        "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.",
+                        Toast.LENGTH_LONG
+                    ).show()
+
+                    // 잠시 후 앱 종료
+                    delay(2000)
+                    finishAffinity() // 모든 액티비티 종료
 
                     break // 루프 종료
                 }
@@ -386,8 +392,10 @@ class SplashActivity : AppCompatActivity() {
             // 접근성 권한이 없으면 설정 화면으로 이동
             openAccessibilitySettings()
         } else {
-            // 이미 권한이 있으면 메인으로 이동
-            moveToMainActivity()
+            // 설정 완료 메시지 표시 후 앱 종료
+            Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG)
+                .show()
+            finishAffinity()
         }
     }
 
@@ -476,7 +484,7 @@ class SplashActivity : AppCompatActivity() {
                 // 권한이 거부된 경우 다이얼로그 표시
                 if (deniedPermissions.size == 1){
                     if (deniedPermissions.contains("android.permission.SYSTEM_ALERT_WINDOW")) {
-                        moveToMainActivity()
+                        //moveToMainActivity()
                     }
                 }else{
                     isPause = true // 다이얼로그가 표시되었음을 표시
@@ -544,6 +552,13 @@ class SplashActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * 배터리 최적화 제외 요청
+     */
+    private fun requestBatteryOptimizationExclusion() {
+        val app = application as CallGuardApplication
+        app.requestBatteryOptimizationExclusion(this)
+    }
 
     override fun onDestroy() {
         super.onDestroy()

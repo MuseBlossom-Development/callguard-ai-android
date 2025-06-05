@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.messaging.FirebaseMessaging
 import com.museblossom.callguardai.data.model.LoginData
 import com.museblossom.callguardai.ui.activity.LoginActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -85,6 +86,59 @@ class TermsAgreementActivity : ComponentActivity() {
         }
     }
 
+    private fun proceedToPermissionScreen() {
+        // FCM 토큰 서버 전송
+        initializeFCMFromTermsAgreement()
+
+        val intent = Intent(this, EtcPermissonActivity::class.java)
+        startActivity(intent)
+        finish()
+    }
+
+    /**
+     * 약관 동의 완료 후 FCM 토큰을 서버로 전송
+     */
+    private fun initializeFCMFromTermsAgreement() {
+        lifecycleScope.launch {
+            try {
+                FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                    if (!task.isSuccessful) {
+                        Log.w("FCM", "FCM 토큰 가져오기 실패", task.exception)
+                        return@addOnCompleteListener
+                    }
+
+                    val token = task.result
+                    Log.d("FCM", "약관 동의 후 FCM 토큰: $token")
+
+                    // 서버로 토큰 전송
+                    sendTokenToServer(token)
+                }
+            } catch (e: Exception) {
+                Log.e("FCM", "FCM 토큰 처리 중 오류", e)
+            }
+        }
+    }
+
+    /**
+     * FCM 토큰을 서버로 전송
+     */
+    private fun sendTokenToServer(token: String) {
+        lifecycleScope.launch {
+            try {
+                // Repository를 통해 토큰 전송
+                callGuardRepository.updatePushToken(token)
+                    .onSuccess {
+                        Log.d("FCM", "FCM 토큰 서버 전송 완료")
+                    }
+                    .onFailure { e ->
+                        Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
+                    }
+            } catch (e: Exception) {
+                Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
+            }
+        }
+    }
+
     private fun sendTokenToServer(googleIdToken: String, agreedTerms: Map<String, Boolean>) {
         Log.i(TAG, "서버로 토큰을 전송합니다.")
         Log.d(TAG, "약관 동의 상태: $agreedTerms")
@@ -118,7 +172,7 @@ class TermsAgreementActivity : ComponentActivity() {
                                     "로그인이 완료되었습니다!",
                                     Toast.LENGTH_SHORT
                                 ).show()
-                                proceedToMain()
+                                proceedToPermissionScreen()
                             }
                             .addOnFailureListener { firebaseException ->
                                 Log.e(TAG, "Firebase Auth 로그인 실패", firebaseException)
@@ -128,7 +182,7 @@ class TermsAgreementActivity : ComponentActivity() {
                                     "로그인이 완료되었습니다!",
                                     Toast.LENGTH_SHORT
                                 ).show()
-                                proceedToMain()
+                                proceedToPermissionScreen()
                             }
                     },
                     onFailure = { exception ->

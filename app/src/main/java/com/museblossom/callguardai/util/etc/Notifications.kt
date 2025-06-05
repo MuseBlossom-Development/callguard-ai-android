@@ -11,6 +11,10 @@ import java.util.*
 
 object Notifications {
     const val NOTIFICATION_ID__CALL_RECORDING = 1
+    const val NOTIFICATION_ID_DEEP_VOICE = 2
+    const val NOTIFICATION_ID_VOICE_PHISHING = 3
+
+    const val CHANNEL_ID_SECURITY_ALERT = "security_alert_channel"
 
     @JvmStatic
     fun Builder(context: Context, @StringRes channelIdStringResId: Int): NotificationCompat.Builder {
@@ -30,6 +34,20 @@ object Notifications {
                 channel.enableLights(false)
                 channel.setSound(null, null)
                 notificationChannelIdToNotificationChannelMap.put(channel.id, channel)
+
+                //security alert
+                val securityChannel = NotificationChannel(
+                    CHANNEL_ID_SECURITY_ALERT,
+                    "보안 알림",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                securityChannel.description = "딥보이스 및 보이스피싱 감지 알림"
+                securityChannel.enableLights(true)
+                securityChannel.enableVibration(true)
+                notificationChannelIdToNotificationChannelMap.put(
+                    securityChannel.id,
+                    securityChannel
+                )
             }
             //add notifications, and remove old ones if not needed anymore
             val existingNotificationChannels = notificationManager.getNotificationChannels()
