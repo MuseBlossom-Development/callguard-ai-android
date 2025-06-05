@@ -2,7 +2,9 @@ package com.museblossom.callguardai.ui.activity
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -26,10 +28,6 @@ class PermissionDeinedActivity : AppCompatActivity() {
         binding = ActivityPermissionDeinedBinding.inflate(layoutInflater).apply {
             setContentView(root)
         }
-//        binding.permissionBtn.setOnClickListener {
-////            moveToSplashActivity()
-//
-//        }
         showEtcPermissionDialog(this@PermissionDeinedActivity)
     }
 
@@ -81,13 +79,24 @@ class PermissionDeinedActivity : AppCompatActivity() {
         imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
 
         customView.movePermissionBtn.setOnClickListener {
-           moveToEtcPermissionActivity()
+            openAppSettings()
         }
     }
-    private fun moveToEtcPermissionActivity() {
-        var intent = Intent(this@PermissionDeinedActivity, EtcPermissonActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(intent)
-        finish()
+
+    /**
+     * 앱 설정 화면으로 이동
+     */
+    private fun openAppSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageName")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            // 설정 화면 열기 실패 시 일반 설정으로
+            val intent = Intent(Settings.ACTION_SETTINGS)
+            startActivity(intent)
+        }
     }
 }

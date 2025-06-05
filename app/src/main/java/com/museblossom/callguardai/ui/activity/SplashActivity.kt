@@ -38,6 +38,7 @@ import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
 import com.museblossom.callguardai.ui.viewmodel.SplashViewModel
 import com.museblossom.callguardai.util.etc.setOnSingleClickListener
 import com.orhanobut.dialogplus.DialogPlus
+import com.orhanobut.dialogplus.ViewHolder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay

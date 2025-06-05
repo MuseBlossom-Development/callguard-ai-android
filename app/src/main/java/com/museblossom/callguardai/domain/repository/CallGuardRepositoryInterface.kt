@@ -80,4 +80,16 @@ interface CallGuardRepositoryInterface {
      * 파일 존재 여부 확인
      */
     fun isFileExists(file: File): Boolean
+
+    /**
+     * 약관 조회
+     * @param termsType 약관 종류 (terms_of_use, privacy_policy, marketing_consent, ad_receive_consent)
+     * @param lang 언어 코드 (kr: 한국어, en: 영어, ja: 일본어, zh: 중국어)
+     * @param version 약관 버전 (없으면 최신 버전 반환)
+     */
+    suspend fun getTerms(
+        termsType: String,
+        lang: String = "kr",
+        version: Int? = null
+    ): Result<String>
 }

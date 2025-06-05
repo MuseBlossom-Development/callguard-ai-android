@@ -77,6 +77,9 @@
         <!-- 권한 관련 액티비티들 -->
         <activity android:name=".ui.activity.PermissionDeinedActivity" android:exported="false" />
         <activity android:name=".ui.activity.EtcPermissonActivity" android:exported="false" />
+        <activity
+            android:name=".ui.activity.AccessibilityPermissionActivity"
+            android:exported="false" />
         <activity android:name=".ui.activity.AlarmOffActivity" android:exported="false" />
 
         <!-- 통화 녹음 서비스 -->

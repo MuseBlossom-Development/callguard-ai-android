@@ -21,12 +21,17 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-
+import com.denzcoskun.imageslider.constants.ScaleTypes
+import com.denzcoskun.imageslider.models.SlideModel
 import com.gun0912.tedpermission.PermissionListener
 import com.gun0912.tedpermission.normal.TedPermission
 import com.museblossom.callguardai.R
+import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
 import com.museblossom.callguardai.util.etc.setOnSingleClickListener
+import com.orhanobut.dialogplus.DialogPlus
+import com.orhanobut.dialogplus.ViewHolder
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -42,8 +47,11 @@ class EtcPermissonActivity : AppCompatActivity() {
 
     // 중복 실행 방지 플래그들
     private var isBatteryOptimizationInProgress = false
-    private var isAccessibilityStepInProgress = false
     private var isBasicPermissionInProgress = false // 기본 권한 요청 중복 방지
+
+    private lateinit var dialogPlus: DialogPlus
+    private lateinit var customView: PermissionOverlayDialogBinding
+    private lateinit var viewHolder: ViewHolder
 
     companion object {
         private const val REQUEST_PERMISSION_CODE = 0
@@ -75,6 +83,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "메인 퍼미션")
 
         // 오버레이 권한을 먼저 체크
+        dialogSetting()
         Log.d("Permission", "onCreate에서 checkOverlayPermission 호출")
         checkOverlayPermission()
         Log.d("Permission", "===== onCreate 완료 =====")
@@ -141,10 +150,10 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Log.d("Permission", "배터리 최적화가 이미 진행 중이므로 건너뜀")
                 }
             } else {
-                Log.d("Permission", "기본 권한 요청 필요 - setPermission 호출")
+                Log.d("Permission", "기본 권한 요청 필요 - setPermission 호출111")
                 // 중복 요청 방지
-                if (!isBasicPermissionInProgress) {
-                    setPermission(permission)
+                if (!isRetryPermission) {
+                    showEtcPermissionDialog()
                 } else {
                     Log.d("Permission", "기본 권한 요청이 이미 진행 중이므로 건너뜀")
                 }
@@ -171,10 +180,18 @@ class EtcPermissonActivity : AppCompatActivity() {
         override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
             Log.d("Permission", "===== 기본 권한 거부됨 =====")
             // 플래그 리셋
+            isRetryPermission = true
             isBasicPermissionInProgress = false
             Log.d("Permission", "테드_권한 거부 : $deniedPermissions")
             Log.d("Permission", "테드_버전 여부 : ${Build.VERSION.SDK_INT}")
-            moveToPermissonDeinedActivity()
+
+            // Android 14+에서는 shouldShowRequestPermissionRationale이 제대로 작동하지 않으므로
+            // 첫 번째 거부에서는 항상 재요청 다이얼로그를 표시
+            Log.d("Permission", "권한 거부 - 재요청 다이얼로그 표시")
+            if(dialogPlus.isShowing){
+                dialogPlus.dismiss()
+            }
+            showPermissionRetryDialog(deniedPermissions)
         }
     }
 
@@ -192,7 +209,10 @@ class EtcPermissonActivity : AppCompatActivity() {
                 Log.d("Permission", "오버레이 권한 이미 허용됨 - 기본 권한 요청")
                 // 오버레이 권한이 이미 있으면 기본 권한 요청
                 if (!isBasicPermissionInProgress) {
-                    setPermission(permission)
+                    if(dialogPlus.isShowing){
+                        dialogPlus.dismiss()
+                    }
+                    showEtcPermissionDialog()
                 } else {
                     Log.d("Permission", "기본 권한 요청이 이미 진행 중이므로 건너뜀")
                 }
@@ -201,7 +221,10 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "Android 6.0 미만 - 오버레이 권한 체크 불필요")
             // 오버레이 권한이 불필요한 버전이면 바로 기본 권한 요청
             if (!isBasicPermissionInProgress) {
-                setPermission(permission)
+                if(dialogPlus.isShowing){
+                    dialogPlus.dismiss()
+                }
+                showEtcPermissionDialog()
             } else {
                 Log.d("Permission", "기본 권한 요청이 이미 진행 중이므로 건너뜀")
             }
@@ -210,31 +233,62 @@ class EtcPermissonActivity : AppCompatActivity() {
     }
 
     private fun showOverlayPermissionDialog() {
-        Log.d("Permission", "===== 오버레이 권한 다이얼로그 표시 =====")
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("다른 앱 위에 표시 권한 필요")
-            .setMessage("CallGuardAI가 통화 중 실시간으로 보이스피싱 경고를 표시하려면 '다른 앱 위에 표시' 권한이 필요합니다.\n\n이 권한이 없으면:\n• 통화 중 경고창 표시 불가\n• 실시간 위험 알림 불가")
-            .setPositiveButton("설정하기", null)
-            .setNegativeButton("건너뛰기", null)
-            .setCancelable(false)
-            .create()
+//        Log.d("Permission", "===== 오버레이 권한 다이얼로그 표시 =====")
+//        val dialog = AlertDialog.Builder(this)
+//            .setTitle("다른 앱 위에 표시 권한 필요")
+//            .setMessage("CallGuardAI가 통화 중 실시간으로 보이스피싱 경고를 표시하려면 '다른 앱 위에 표시' 권한이 필요합니다.\n\n이 권한이 없으면:\n• 통화 중 경고창 표시 불가\n• 실시간 위험 알림 불가")
+//            .setPositiveButton("설정하기", null)
+//            .setNegativeButton("건너뛰기", null)
+//            .setCancelable(false)
+//            .create()
+//
+//        dialog.show()
+//
+//        // 버튼에 중복 클릭 방지 적용
+//        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnSingleClickListener(1500L) {
+//            Log.d("Permission", "오버레이 권한 다이얼로그 - 설정하기 클릭")
+//            dialog.dismiss()
+//            requestOverlayPermission()
+//        }
+//
+//        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnSingleClickListener(1000L) {
+//            Log.w("Permission", "사용자가 오버레이 권한을 거부함")
+//            Log.d("Permission", "오버레이 권한 건너뛰기 - 기본 권한으로 진행")
+//            dialog.dismiss()
+//            setPermission(permission)
+//        }
 
-        dialog.show()
+        dialogPlus.show()
 
-        // 버튼에 중복 클릭 방지 적용
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnSingleClickListener(1500L) {
-            Log.d("Permission", "오버레이 권한 다이얼로그 - 설정하기 클릭")
-            dialog.dismiss()
+        Log.e("확인", "다이얼로그 닫음4")
+        val imageList = ArrayList<SlideModel>() // Create image list
+        imageList.add(SlideModel(R.drawable.overlay_permission))
+
+        var imageSlider = customView.tutorialImage
+        imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
+
+        customView.movePermissionBtn.setOnSingleClickListener {
+//            checkOverlayPermission() //todo 어레이 마지막 버튼시
+
             requestOverlayPermission()
         }
+    }
+    private fun showEtcPermissionDialog() {
+        Log.d("Dialog", "===== 기타 권한 다이얼로그 시작 =====")
+        dialogPlus.show()
+        val imageList = ArrayList<SlideModel>() // Create image list
+        imageList.add(SlideModel(R.drawable.etc_permission))
 
-        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnSingleClickListener(1000L) {
-            Log.w("Permission", "사용자가 오버레이 권한을 거부함")
-            Log.d("Permission", "오버레이 권한 건너뛰기 - 기본 권한으로 진행")
-            dialog.dismiss()
+        var imageSlider = customView.tutorialImage
+        imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
+
+        customView.movePermissionBtn.setOnSingleClickListener {
+//            checkOverlayPermission() //todo 어레이 마지막 버튼시
+            dialogPlus.dismiss()
             setPermission(permission)
         }
     }
+
 
     private fun requestOverlayPermission() {
         Log.d("Permission", "===== requestOverlayPermission 시작 =====")
@@ -303,14 +357,44 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "접근성 권한 상태: $hasAccessibility")
 
         if (hasAccessibility) {
-            Log.d("Permission", "모든 권한 (접근성 포함) 획득. 메인 액티비티로 이동합니다.")
-            launchMainAndFinish()
+            Log.d("Permission", "모든 권한 (접근성 포함) 획득. 완료 처리")
+            finishWithSuccess()
         } else {
-            Log.d("Permission", "일반 권한은 획득했으나, 접근성 권한이 필요합니다. 앱으로 돌아와서 안내 후 설정으로 이동.")
-            // 잠시 안내 메시지 표시 후 접근성 설정으로 이동
-            showAccessibilityReadyDialog()
+            Log.d("Permission", "접근성 권한이 필요합니다. AccessibilityPermissionActivity로 이동")
+            moveToAccessibilityPermissionActivity()
         }
         Log.d("Permission", "===== checkAndLaunchMainActivityOrRequestAccessibility 완료 =====")
+    }
+
+    private fun moveToAccessibilityPermissionActivity() {
+        val intent = Intent(this, AccessibilityPermissionActivity::class.java)
+        startActivity(intent)
+        finish()
+    }
+
+    private fun finishWithSuccess() {
+        Log.d("Permission", "모든 권한 완료 - 스플래시로 이동")
+
+        // 완료 메시지 표시
+        Toast.makeText(
+            this,
+            "🎉 설정이 완료되었습니다! CallGuardAI가 백그라운드에서 동작합니다.",
+            Toast.LENGTH_LONG
+        ).show()
+
+        // 1.5초 후 스플래시로 이동
+        lifecycleScope.launch {
+            delay(1500)
+
+            val intent = Intent(
+                this@EtcPermissonActivity,
+                SplashActivity::class.java
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            startActivity(intent)
+            finish()
+        }
     }
 
     private fun startOverlayPermissionCheck() {
@@ -410,7 +494,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "API 34+ 권한 요청")
             TedPermission.create()
                 .setPermissionListener(permissionListener)
-                .setDeniedMessage("권한이 거부되었습니다. 설정 > 권한에서 허용해주세요.")
                 .setPermissions(
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
@@ -428,7 +511,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "API 33+ 권한 요청")
             TedPermission.create()
                 .setPermissionListener(permissionListener)
-                .setDeniedMessage("권한이 거부되었습니다. 설정 > 권한에서 허용해주세요.")
                 .setPermissions(
                     Manifest.permission.READ_MEDIA_AUDIO,
                     Manifest.permission.FOREGROUND_SERVICE,
@@ -446,7 +528,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "API 32+ 권한 요청")
             TedPermission.create()
                 .setPermissionListener(permissionListener)
-                .setDeniedMessage("권한이 거부되었습니다. 설정 > 권한에서 허용해주세요.")
                 .setPermissions(
                     Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
@@ -464,7 +545,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "기본 권한 요청")
             TedPermission.create()
                 .setPermissionListener(permissionListener)
-                .setDeniedMessage("권한이 거부되었습니다. 설정 > 권한에서 허용해주세요.")
                 .setPermissions(
                     Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
@@ -480,9 +560,25 @@ class EtcPermissonActivity : AppCompatActivity() {
                 .check()
         }
 
-        // 요청이 완료되면 플래그 리셋
-        isBasicPermissionInProgress = false
         Log.d("Permission", "===== setPermission 완료 =====")
+    }
+    private fun dialogSetting() {
+        customView = PermissionOverlayDialogBinding.inflate(layoutInflater)
+        viewHolder = ViewHolder(customView.root)
+
+        val originalStatusBarColor = window.statusBarColor
+        window.statusBarColor = ContextCompat.getColor(this,R.color.dialogplus_black_overlay)
+
+        dialogPlus = DialogPlus.newDialog(this@EtcPermissonActivity)
+            .setContentBackgroundResource(R.drawable.dialog_round)
+            .setContentHolder(viewHolder)
+            .setCancelable(false)
+            .setInAnimation(R.anim.dialog_slide_up_fade_in)
+            .setOnDismissListener {
+                window.statusBarColor = originalStatusBarColor
+            }
+            .setExpanded(false)
+            .create()
     }
 
     override fun onRequestPermissionsResult(
@@ -618,77 +714,23 @@ class EtcPermissonActivity : AppCompatActivity() {
                 com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
             )
         ) {
-            // 접근성 권한이 없으면 안내 다이얼로그 표시
-            showAccessibilityGuideDialog()
+            // 접근성 권한이 없으면 AccessibilityPermissionActivity로 이동
+            moveToAccessibilityPermissionActivity()
         } else {
-            // 설정 완료 메시지 표시 후 앱 종료
-            Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG)
-                .show()
-            finishAffinity()
+            // 설정 완료 메시지 표시 후 스플래시로 이동
+            finishWithSuccess()
         }
     }
 
     /**
      * 접근성 권한 설정 준비 완료 안내
      */
-    private fun showAccessibilityReadyDialog() {
-        var countdown = 3
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("마지막 단계입니다! 🎉")
-            .setMessage("거의 다 완료되었습니다!\n\n다음 화면에서:\n1. '설치된 앱' 목록에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택 후 스위치 켜기\n3. 자동으로 완료됩니다!\n\n${countdown}초 후 자동으로 이동합니다...")
-            .setPositiveButton("지금 바로 가기", null)
-            .setCancelable(false)
-            .create()
-
-        dialog.show()
-
-        // 버튼에 중복 클릭 방지 적용
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnSingleClickListener(1000L) {
-            dialog.dismiss()
-            openAccessibilitySettings()
-        }
-
-        // 1초마다 카운트다운 업데이트
-        lifecycleScope.launch {
-            repeat(3) {
-                delay(1000)
-                countdown--
-
-                if (!isFinishing && !isChangingConfigurations && dialog.isShowing) {
-                    if (countdown > 0) {
-                        // 메시지 업데이트
-                        val message =
-                            "거의 다 완료되었습니다!\n\n다음 화면에서:\n1. '설치된 앱' 목록에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택 후 스위치 켜기\n3. 자동으로 완료됩니다!\n\n${countdown}초 후 자동으로 이동합니다..."
-                        dialog.setMessage(message)
-                    } else {
-                        // 카운트다운 완료 - 설정 화면으로 이동
-                        dialog.dismiss()
-                        openAccessibilitySettings()
-                    }
-                }
-            }
-        }
-    }
+    // Removed showAccessibilityReadyDialog as it's moved to AccessibilityPermissionActivity
 
     /**
      * 접근성 권한 설정 안내 다이얼로그 표시
      */
-    private fun showAccessibilityGuideDialog() {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("접근성 권한 설정")
-            .setMessage("CallGuardAI가 정상 작동하려면 접근성 권한이 필요합니다.\n\n설정 방법:\n1. '설치된 앱'에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택\n3. 스위치를 켜서 활성화")
-            .setPositiveButton("설정으로 이동", null)
-            .setCancelable(false)
-            .create()
-
-        dialog.show()
-
-        // 버튼에 중복 클릭 방지 적용
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnSingleClickListener(1000L) {
-            dialog.dismiss()
-            openAccessibilitySettings()
-        }
-    }
+    // Removed showAccessibilityGuideDialog as it's moved to AccessibilityPermissionActivity
 
     /**
      * 접근성 서비스 활성화 여부 확인
@@ -717,171 +759,12 @@ class EtcPermissonActivity : AppCompatActivity() {
     /**
      * 접근성 설정 화면으로 직접 이동
      */
-    private fun openAccessibilitySettings() {
-        try {
-            // 권한 체크 작업을 먼저 시작 (스킵 방지)
-            startAccessibilityPermissionCheck()
-
-            val componentName = ComponentName(
-                packageName,
-                "com.museblossom.callguardai.util.etc.MyAccessibilityService"
-            )
-
-            // 제조사별 접근성 설정 시도
-            val manufacturerIntents = listOf(
-                // 삼성
-                Intent("com.samsung.accessibility.installed_service"),
-                // LG
-                Intent("com.lge.settings.ACCESSIBILITY_SETTINGS"),
-                // 샤오미
-                Intent("com.android.settings.ACCESSIBILITY_SETTINGS_ACTIVITY")
-            )
-
-            for (intent in manufacturerIntents) {
-                try {
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    if (intent.resolveActivity(packageManager) != null) {
-                        startActivity(intent)
-                        Log.d("접근성설정", "제조사별 접근성 설정으로 이동 성공: ${intent.action}")
-                        Toast.makeText(this, "설치된 앱에서 'CallGuardAI'를 찾아 활성화해주세요", Toast.LENGTH_LONG)
-                            .show()
-                        return
-                    }
-                } catch (e: Exception) {
-                    Log.d("접근성설정", "제조사별 설정 시도 실패: ${intent.action}")
-                }
-            }
-
-            // 기본 접근성 설정으로 이동
-            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-
-            // 가능한 경우 앱을 하이라이트하기 위한 extras 추가
-            val bundle = Bundle()
-            bundle.putString(":settings:fragment_args_key", componentName.flattenToString())
-            intent.putExtra(":settings:show_fragment_args", bundle)
-            intent.putExtra(":settings:fragment_args_key", componentName.flattenToString())
-
-            startActivity(intent)
-            Log.d("접근성설정", "기본 접근성 설정 화면으로 이동")
-
-            // 안내 메시지
-            Toast.makeText(
-                this,
-                "설치된 앱 → CallGuardAI → 스위치 켜기",
-                Toast.LENGTH_LONG
-            ).show()
-
-        } catch (e: Exception) {
-            Log.e("접근성설정", "접근성 설정 화면 열기 완전 실패", e)
-            Toast.makeText(
-                this,
-                "설정 > 접근성 > 설치된 앱에서 CallGuardAI를 활성화해주세요",
-                Toast.LENGTH_LONG
-            ).show()
-        }
-    }
+    // Removed openAccessibilitySettings as it's moved to AccessibilityPermissionActivity
 
     /**
      * 접근성 권한 주기적 체크 (더 적극적인 모니터링)
      */
-    private fun startAccessibilityPermissionCheck() {
-        // 기존 작업이 있다면 취소
-        permissionCheckJob?.cancel()
-
-        Log.d("Permission", "접근성 권한 자동 감지 시작 (적극적 모니터링)")
-
-        // 새로운 권한 체크 작업 시작
-        permissionCheckJob = lifecycleScope.launch {
-            var checkCount = 0
-            while (isActive) {
-                delay(100) // 접근성 권한 체크 주기를 100ms로 더 빠르게 수정
-                checkCount++
-
-                val hasAccessibilityPermission = isAccessibilityServiceEnabled(
-                    applicationContext,
-                    com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
-                )
-
-                Log.d(
-                    "Permission",
-                    "접근성 권한 체크 ${checkCount}회 (${checkCount * 0.1}초): $hasAccessibilityPermission"
-                )
-
-                if (hasAccessibilityPermission) {
-                    Log.d("권한확인", "접근성 권한 자동 감지됨! (${checkCount * 0.1}초 후)")
-
-                    // UI 스레드에서 앱을 포그라운드로 가져온 후 완료 처리
-                    withContext(Dispatchers.Main) {
-                        Log.d("Permission", "접근성 권한 감지 완료 - 앱을 포그라운드로 가져오기")
-
-                        // 모든 권한 체크 작업 중단
-                        overlayPermissionCheckJob?.cancel()
-
-                        // 앱을 포그라운드로 가져오기
-                        bringAppToForeground()
-
-                        // 잠시 대기 후 완료 처리 (앱이 완전히 포그라운드로 올라온 후)
-                        launch {
-                            delay(1000) // 1초 대기
-                            Log.d("Permission", "앱 복귀 후 완료 처리 시작")
-
-                            // Toast 메시지 표시 후 스플래시로 이동
-                            Toast.makeText(
-                                this@EtcPermissonActivity,
-                                "🎉 설정이 완료되었습니다! CallGuardAI가 백그라운드에서 동작합니다.",
-                                Toast.LENGTH_LONG
-                            ).show()
-
-                            // 1.5초 후 스플래시로 이동 (Toast 메시지를 볼 수 있도록)
-                            launch {
-                                delay(1500)
-                                Log.d("Permission", "모든 설정 완료 - 스플래시로 이동")
-
-                                // 스플래시 액티비티로 이동
-                                val intent = Intent(
-                                    this@EtcPermissonActivity,
-                                    com.museblossom.callguardai.ui.activity.SplashActivity::class.java
-                                ).apply {
-                                    flags =
-                                        Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                }
-                                startActivity(intent)
-                                // finish() 제거 - 앱을 닫지 않고 바로 스플래시로 이동
-                            }
-                        }
-                    }
-                    break
-                }
-
-                // 5초마다 상태 로그 출력
-                if (checkCount % 50 == 0) { // 50 * 0.1초 = 5초
-                    Log.d("권한확인", "접근성 권한 대기 중... (${checkCount * 0.1}초 경과)")
-                }
-
-                // 2분 후에는 체크 중단 (1200 * 0.1초 = 120초)
-                if (checkCount >= 1200) {
-                    Log.w("권한확인", "접근성 권한 자동 감지 타임아웃 (2분) - 체크 재시작")
-
-                    // UI 스레드에서 사용자에게 안내 메시지 표시
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@EtcPermissonActivity,
-                            "접근성 권한 설정이 오래 걸리고 있습니다. 설정을 완료하거나 앱으로 돌아와 주세요.",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-
-                    // 5초 대기 후 체크 재시작
-                    delay(5000)
-                    checkCount = 0 // 카운터 리셋하여 체크 재시작
-                    Log.d("권한확인", "접근성 권한 체크 재시작")
-                    continue
-                }
-            }
-        }
-    }
+    // Removed startAccessibilityPermissionCheck as it's moved to AccessibilityPermissionActivity
 
     override fun onDestroy() {
         super.onDestroy()
@@ -962,5 +845,38 @@ class EtcPermissonActivity : AppCompatActivity() {
         return requiredPermissions.all { permission ->
             checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
         }
+    }
+
+    /**
+     * 권한 재요청 다이얼로그 표시
+     */
+    private fun showPermissionRetryDialog(deniedPermissions: MutableList<String>?) {
+        val permissionNames = deniedPermissions?.mapNotNull { permission ->
+            when (permission) {
+                Manifest.permission.RECORD_AUDIO -> "마이크"
+                Manifest.permission.READ_PHONE_STATE -> "전화 상태"
+                Manifest.permission.READ_PHONE_NUMBERS -> "전화번호"
+                Manifest.permission.READ_CONTACTS -> "연락처"
+                Manifest.permission.READ_CALL_LOG -> "통화 기록"
+                Manifest.permission.POST_NOTIFICATIONS -> "알림"
+                else -> null
+            }
+        }?.joinToString(", ") ?: "일부 권한"
+
+        AlertDialog.Builder(this)
+            .setTitle("권한이 필요합니다")
+            .setMessage("CallGuardAI가 보이스피싱을 감지하려면 다음 권한이 필요합니다:\n\n• $permissionNames\n\n이 권한들 없이는 앱이 정상 작동하지 않습니다.")
+            .setPositiveButton("다시 허용하기") { dialog, _ ->
+                dialog.dismiss()
+                Log.d("Permission", "사용자가 권한 재요청 동의 - 다시 시도")
+                setPermission(permission)
+            }
+            .setNegativeButton("설정에서 변경") { dialog, _ ->
+                dialog.dismiss()
+                Log.d("Permission", "사용자가 설정으로 이동 선택")
+                moveToPermissonDeinedActivity()
+            }
+            .setCancelable(false)
+            .show()
     }
 }
