@@ -36,7 +36,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.museblossom.callguardai.data.model.LoginData
 import com.museblossom.callguardai.ui.activity.LoginActivity
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import javax.inject.Inject
 import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
 import androidx.activity.enableEdgeToEdge
@@ -87,8 +87,8 @@ class TermsAgreementActivity : ComponentActivity() {
     }
 
     private fun proceedToPermissionScreen() {
-        // FCM 토큰 서버 전송
-        initializeFCMFromTermsAgreement()
+        // FCM 토큰을 백그라운드에서 전송 (화면 전환과 독립적으로)
+        sendFCMTokenInBackground()
 
         val intent = Intent(this, EtcPermissonActivity::class.java)
         startActivity(intent)
@@ -96,45 +96,36 @@ class TermsAgreementActivity : ComponentActivity() {
     }
 
     /**
-     * 약관 동의 완료 후 FCM 토큰을 서버로 전송
+     * FCM 토큰을 백그라운드에서 서버로 전송 (GlobalScope 사용)
      */
-    private fun initializeFCMFromTermsAgreement() {
-        lifecycleScope.launch {
+    private fun sendFCMTokenInBackground() {
+        GlobalScope.launch {
             try {
                 FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                    if (!task.isSuccessful) {
+                    if (task.isSuccessful) {
+                        val token = task.result
+                        Log.d("FCM", "약관 동의 후 FCM 토큰: $token")
+
+                        // GlobalScope에서 서버 전송
+                        GlobalScope.launch {
+                            try {
+                                callGuardRepository.updatePushToken(token)
+                                    .onSuccess {
+                                        Log.d("FCM", "FCM 토큰 서버 전송 완료")
+                                    }
+                                    .onFailure { e ->
+                                        Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
+                                    }
+                            } catch (e: Exception) {
+                                Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
+                            }
+                        }
+                    } else {
                         Log.w("FCM", "FCM 토큰 가져오기 실패", task.exception)
-                        return@addOnCompleteListener
                     }
-
-                    val token = task.result
-                    Log.d("FCM", "약관 동의 후 FCM 토큰: $token")
-
-                    // 서버로 토큰 전송
-                    sendTokenToServer(token)
                 }
             } catch (e: Exception) {
                 Log.e("FCM", "FCM 토큰 처리 중 오류", e)
-            }
-        }
-    }
-
-    /**
-     * FCM 토큰을 서버로 전송
-     */
-    private fun sendTokenToServer(token: String) {
-        lifecycleScope.launch {
-            try {
-                // Repository를 통해 토큰 전송
-                callGuardRepository.updatePushToken(token)
-                    .onSuccess {
-                        Log.d("FCM", "FCM 토큰 서버 전송 완료")
-                    }
-                    .onFailure { e ->
-                        Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
-                    }
-            } catch (e: Exception) {
-                Log.e("FCM", "FCM 토큰 서버 전송 실패", e)
             }
         }
     }

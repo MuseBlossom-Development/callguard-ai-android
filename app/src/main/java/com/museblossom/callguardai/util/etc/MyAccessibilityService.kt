@@ -4,6 +4,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Intent
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
@@ -86,18 +88,60 @@ class MyAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-//        val accessibilityServiceInfo = AccessibilityServiceInfo()
-//        accessibilityServiceInfo.flags = 1
-//        accessibilityServiceInfo.eventTypes = -1
-        // 접근성 권한이 활성화되었을 때 앱으로 돌아가도록 설정
+        // 접근성 권한이 활성화되었을 때 완료 처리
         Toast.makeText(this, "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.", Toast.LENGTH_LONG).show()
 
-        // 설정 화면을 닫기 위해 홈 화면으로 이동
-        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        // 설정 화면들을 모두 닫고 홈 화면으로 이동
+        try {
+            // 1. 여러 번 뒤로가기로 설정 화면 탈출 시도
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_BACK)
+
+            // 2. 홈 화면으로 이동
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+
+            // 3. 즉시 홈 화면으로 이동 시도
+            startActivity(homeIntent)
+
+            // 4. 잠시 후 한 번 더 홈 화면으로 이동 (확실히 하기 위해)
+            Handler(Looper.getMainLooper()).postDelayed({
+                try {
+                    val homeIntent2 = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }
+                    startActivity(homeIntent2)
+
+                    // 5. 최종적으로 앱 종료 시도
+                    val closeIntent = Intent().apply {
+                        action = "android.intent.action.MAIN"
+                        addCategory("android.intent.category.HOME")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(closeIntent)
+
+                } catch (e: Exception) {
+                    Log.e("MyAccessibilityService", "최종 홈 화면 이동 실패", e)
+                }
+            }, 1000)
+
+        } catch (e: Exception) {
+            Log.e("MyAccessibilityService", "접근성 권한 활성화 후 화면 전환 실패", e)
+
+            // 기본 홈 화면 이동
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(homeIntent)
         }
-        startActivity(homeIntent)
     }
 
     override fun onInterrupt() {
