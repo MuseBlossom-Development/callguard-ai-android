@@ -261,7 +261,7 @@ fun TermsAgreementScreen(
 
                 // Subtitle
                 Text(
-                    text = "필수항목 및 선택항목 약관에 ㄱ동의해 주세요.",
+                    text = "필수항목 및 선택항목 약관에 동의해 주세요.",
                     fontSize = 16.sp,
                     color = Color.Black,
                     modifier = Modifier.padding(bottom = 32.dp)

@@ -36,8 +36,8 @@ import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivitySplashBinding
 import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
 import com.museblossom.callguardai.ui.viewmodel.SplashViewModel
+import com.museblossom.callguardai.util.etc.setOnSingleClickListener
 import com.orhanobut.dialogplus.DialogPlus
-import com.orhanobut.dialogplus.ViewHolder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -195,12 +195,39 @@ class SplashActivity : AppCompatActivity() {
         statusTextView.text = "권한 확인 중..."
         dialogSetting()
 
-        // 배터리 최적화 제외 요청
+        // 모든 권한이 이미 완료되었는지 체크
+        val hasOverlayPermission = Settings.canDrawOverlays(applicationContext)
+        val hasAccessibilityPermission = isAccessibilityServiceEnabled(
+            applicationContext,
+            com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+        )
+
+        Log.d("권한확인", "스플래시 권한 상태 - 오버레이: $hasOverlayPermission, 접근성: $hasAccessibilityPermission")
+
+        if (hasOverlayPermission && hasAccessibilityPermission) {
+            Log.d("권한확인", "모든 권한이 이미 완료됨 - 메인 로직으로 진행")
+            statusTextView.text = "설정 완료"
+
+            // TODO: 여기에 메인 로직 또는 다음 단계 추가
+            Toast.makeText(this, "CallGuardAI 준비 완료! 🎉", Toast.LENGTH_LONG).show()
+
+            // 예시: 3초 후 앱 종료 (실제로는 메인 기능으로 진행)
+            lifecycleScope.launch {
+                delay(3000)
+                finishAffinity()
+            }
+            return
+        }
+
+        // 권한이 부족한 경우에만 권한 설정 진행
+        dialogSetting()
         requestBatteryOptimizationExclusion()
 
-        if (!Settings.canDrawOverlays(applicationContext)) {
+        if (!hasOverlayPermission) {
+            Log.d("권한확인", "오버레이 권한 필요 - 다이얼로그 표시")
             showOverlayPermissionDialog(applicationContext)
         } else {
+            Log.d("권한확인", "오버레이 권한은 있지만 다른 권한 필요 - EtcPermissonActivity로 이동")
             moveToEtcPermissionActivity()
         }
     }
@@ -245,7 +272,7 @@ class SplashActivity : AppCompatActivity() {
         var imageSlider = customView.tutorialImage
         imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
 
-        customView.movePermissionBtn.setOnClickListener {
+        customView.movePermissionBtn.setOnSingleClickListener {
             checkOverlayPermission() //todo 어레이 마지막 버튼시
 
             // 권한 체크 작업 시작
