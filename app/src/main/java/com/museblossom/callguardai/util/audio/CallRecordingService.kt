@@ -33,9 +33,8 @@ import com.yy.mobile.rollingtextview.CharOrder
 import com.yy.mobile.rollingtextview.strategy.Direction
 import com.yy.mobile.rollingtextview.strategy.Strategy
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.*
@@ -218,10 +217,9 @@ class CallRecordingService : Service() {
                 }
 
                 Intent.ACTION_NEW_OUTGOING_CALL -> {
-                    Log.d(TAG, "발신 전화 감지됨")
-                    val phoneIntent =
-                        intent.getParcelableExtra<Intent>(EXTRA_PHONE_INTENT) ?: intent
-                    handlePhoneState(phoneIntent)
+                    Log.d(TAG, "발신 전화 감지됨 - 서비스 종료")
+                    stopSelf() // 발신 전화는 모니터링하지 않음
+                    return START_NOT_STICKY
                 }
 
                 TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
@@ -246,7 +244,6 @@ class CallRecordingService : Service() {
     private fun handlePhoneState(intent: Intent) {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
         val phoneNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
-        val outgoingNumber = intent.getStringExtra(Intent.EXTRA_PHONE_NUMBER)
         val cachedNumber = intent.getStringExtra("CACHED_PHONE_NUMBER")
 
         Log.d(TAG, "========================================")
@@ -254,18 +251,17 @@ class CallRecordingService : Service() {
         Log.d(TAG, "Intent Action: ${intent.action}")
         Log.d(TAG, "전화 상태: $state")
         Log.d(TAG, "수신 전화번호 (EXTRA_INCOMING_NUMBER): $phoneNumber")
-        Log.d(TAG, "발신 전화번호 (EXTRA_PHONE_NUMBER): $outgoingNumber")
         Log.d(TAG, "캐시된 전화번호 (CACHED_PHONE_NUMBER): $cachedNumber")
         Log.d(TAG, "현재 isIncomingCall 상태: $isIncomingCall")
         Log.d(TAG, "현재 저장된 전화번호: $currentPhoneNumber")
         Log.d(TAG, "현재 통화 활성 상태: $isCallActive")
 
         // 전화번호 정보가 있고 현재 저장된 번호가 Unknown이거나 null인 경우 업데이트
-        val availableNumber = phoneNumber ?: outgoingNumber ?: cachedNumber
+        val availableNumber = phoneNumber ?: cachedNumber
         if (availableNumber != null &&
             (currentPhoneNumber == null || currentPhoneNumber == "Unknown" || currentPhoneNumber!!.startsWith(
                 "번호숨김_"
-            ) || currentPhoneNumber!!.startsWith("발신통화_"))
+            )) // incoming call only
         ) {
             currentPhoneNumber = availableNumber
             Log.d(TAG, "전화번호 정보 업데이트: $currentPhoneNumber")
@@ -283,39 +279,30 @@ class CallRecordingService : Service() {
 
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
-                Log.d(TAG, "RINGING 상태 처리")
+                Log.d(TAG, "RINGING 상태 처리 - 오버레이 표시하지 않음")
                 if (!isCallActive) {
                     isIncomingCall = true
-                    // 여러 소스에서 전화번호 추출 시도
+                    // 여러 소스에서 전화번호 추출 시도 (RINGING에서는 번호만 저장)
                     currentPhoneNumber = phoneNumber ?: cachedNumber ?: "Unknown"
-                    Log.d(TAG, "전화 수신 (울림): $currentPhoneNumber")
-                    Log.d(TAG, "isIncomingCall을 true로 설정")
+                    Log.d(TAG, "전화 수신 (울림) - 번호만 저장: $currentPhoneNumber")
+                    Log.d(TAG, "isIncomingCall을 true로 설정, 통화 시작은 OFFHOOK에서 처리")
+                    // startCall()을 호출하지 않음 - 오버레이 표시 안함
                 } else {
                     Log.d(TAG, "이미 통화가 활성화된 상태, RINGING 상태 무시")
                 }
             }
 
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                Log.d(TAG, "OFFHOOK 상태 처리")
+                Log.d(TAG, "OFFHOOK 상태 처리 - 통화를 받았음, 오버레이 표시")
 
                 if (isCallActive) {
                     Log.d(TAG, "이미 통화가 활성화된 상태, OFFHOOK 상태 무시")
                     return
                 }
 
-                // 발신 전화인 경우 전화번호 처리
-                if (!isIncomingCall) {
-                    // 발신 전화번호 추출 시도 (우선순위: outgoingNumber > phoneNumber > cachedNumber)
-                    val extractedNumber = outgoingNumber ?: phoneNumber ?: cachedNumber
-                    if (extractedNumber != null) {
-                        currentPhoneNumber = extractedNumber
-                        Log.d(TAG, "발신 전화번호 설정: $currentPhoneNumber")
-                    } else {
-                        currentPhoneNumber = "발신통화_${System.currentTimeMillis()}"
-                        Log.w(TAG, "발신 전화번호를 찾을 수 없음, 타임스탬프로 식별: $currentPhoneNumber")
-                    }
-                } else {
-                    // 수신 전화인 경우 캐시된 번호 사용 (RINGING에서 설정되지 않았을 경우)
+                // 수신 전화인 경우에만 처리 (발신 전화는 이미 차단됨)
+                if (isIncomingCall) {
+                    // 수신 전화에서 캐시된 번호 사용 (RINGING에서 설정되지 않았을 경우)
                     if (currentPhoneNumber == null || currentPhoneNumber == "Unknown") {
                         val finalNumber = cachedNumber ?: phoneNumber
                         if (finalNumber != null) {
@@ -327,10 +314,12 @@ class CallRecordingService : Service() {
                             Log.w(TAG, "수신 전화번호 없음 - 번호 숨김 통화로 처리: $currentPhoneNumber")
                         }
                     }
-                }
 
-                Log.d(TAG, "통화 시작 - 최종 전화번호: $currentPhoneNumber")
-                startCall()
+                    Log.d(TAG, "수신 전화를 받았음 - 통화 시작 및 오버레이 표시: $currentPhoneNumber")
+                    startCall()
+                } else {
+                    Log.d(TAG, "발신 전화 또는 알 수 없는 상태 - 통화 시작하지 않음")
+                }
             }
 
             TelephonyManager.EXTRA_STATE_IDLE -> {
@@ -859,8 +848,12 @@ class CallRecordingService : Service() {
         super.onDestroy()
         Log.d(TAG, "통화녹음 서비스 종료 중")
 
-        serviceScope.cancel()
+        // 먼저 오버레이 제거
+        removeOverlayView()
+        isOverlayCurrentlyVisible = false
+        serviceInstance = null
 
+        // Whisper 리소스 해제 (별도 스코프에서)
         serviceScope.launch {
             try {
                 whisperContext?.release()
@@ -871,9 +864,9 @@ class CallRecordingService : Service() {
         }
 
         whisperContext = null
-        removeOverlayView()
-        isOverlayCurrentlyVisible = false
-        serviceInstance = null
+
+        // 코루틴 스코프는 마지막에 취소
+        serviceScope.cancel()
 
         Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
     }
@@ -937,9 +930,17 @@ class CallRecordingService : Service() {
 
         // 통화 종료 시간 업데이트
         currentCallUuid?.let { uuid ->
-            serviceScope.launch {
-                callRecordRepository.updateCallEndTime(uuid, System.currentTimeMillis())
-                Log.d(TAG, "통화 종료 시간 업데이트됨: UUID=$uuid")
+            try {
+                serviceScope.launch {
+                    try {
+                        callRecordRepository.updateCallEndTime(uuid, System.currentTimeMillis())
+                        Log.d(TAG, "통화 종료 시간 업데이트됨: UUID=$uuid")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "통화 종료 시간 업데이트 실패", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "ServiceScope가 취소되어 통화 종료 시간 업데이트를 건너뜀: ${e.message}")
             }
         }
 
@@ -948,13 +949,24 @@ class CallRecordingService : Service() {
         shouldShowOverlay = false
 
         // 진행 중인 녹음 중지
-        serviceScope.launch {
+        try {
+            serviceScope.launch {
+                try {
+                    Log.d(TAG, "녹음 중지 중...")
+                    recorder.stopRecording(true)
+                    Log.d(TAG, "녹음 중지 완료")
+                } catch (e: Exception) {
+                    Log.e(TAG, "녹음 중지 중 오류: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "ServiceScope가 취소되어 녹음 중지를 동기적으로 시도: ${e.message}")
             try {
-                Log.d(TAG, "녹음 중지 중...")
+                // 동기적으로 녹음 중지 시도
                 recorder.stopRecording(true)
-                Log.d(TAG, "녹음 중지 완료")
-            } catch (e: Exception) {
-                Log.e(TAG, "녹음 중지 중 오류: ${e.message}")
+                Log.d(TAG, "동기적 녹음 중지 완료")
+            } catch (syncE: Exception) {
+                Log.e(TAG, "동기적 녹음 중지 중 오류: ${syncE.message}")
             }
         }
 

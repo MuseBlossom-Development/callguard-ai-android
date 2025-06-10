@@ -59,8 +59,7 @@ class CallGuardApplication : Application() {
                     val token = task.result
                     Log.d("FCM", "FCM 토큰: $token")
 
-                    // TODO: 서버로 토큰 전송 (필요시 구현)
-                    // sendTokenToServer(token)
+                    // 서버로 토큰 전송은 별도 로직에서 처리
                 }
             } catch (e: Exception) {
                 Log.e("FCM", "FCM 초기화 중 오류", e)

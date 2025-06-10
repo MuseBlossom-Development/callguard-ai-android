@@ -44,13 +44,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import render.animations.Render
 import java.io.File
 
 @AndroidEntryPoint
 class SplashActivity : AppCompatActivity() {
     private lateinit var binding: ActivitySplashBinding
-    private lateinit var render: Render
     private lateinit var sliderView: ImageSlider
     private lateinit var dialogPlus: DialogPlus
     private lateinit var customView: PermissionOverlayDialogBinding
@@ -84,8 +82,6 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun initValue() {
-        render = Render(this@SplashActivity)
-
         val logoImage = binding.logo
         val logoText = binding.logoText
         val loadingText = binding.loadingSta
@@ -127,7 +123,6 @@ class SplashActivity : AppCompatActivity() {
                     }
 
                     override fun onAnimationEnd(animation: Animator) {
-                        Log.d("스플래시", "애니메이션이 완료되었습니다")
                         checkModelAndAuth()
                     }
 
@@ -175,17 +170,14 @@ class SplashActivity : AppCompatActivity() {
                 val isLoggedIn = viewModel.checkLoginStatus()
 
                 if (isLoggedIn) {
-                    Log.d("인증확인", "로그인 상태 확인됨")
                     statusTextView.text = "로그인 확인됨"
                     // 권한 체크로 진행
                     proceedToPermissionCheck()
                 } else {
-                    Log.d("인증확인", "로그인이 필요합니다")
                     statusTextView.text = "로그인 필요"
                     moveToLoginActivity()
                 }
             } catch (e: Exception) {
-                Log.e("인증확인", "로그인 상태 확인 실패", e)
                 statusTextView.text = "로그인 필요"
                 moveToLoginActivity()
             }
@@ -203,10 +195,7 @@ class SplashActivity : AppCompatActivity() {
             com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
         )
 
-        Log.d("권한확인", "스플래시 권한 상태 - 오버레이: $hasOverlayPermission, 접근성: $hasAccessibilityPermission")
-
         if (hasOverlayPermission && hasAccessibilityPermission) {
-            Log.d("권한확인", "모든 권한이 이미 완료됨 - 메인 로직으로 진행")
             statusTextView.text = "설정 완료"
 
             // TODO: 여기에 메인 로직 또는 다음 단계 추가
@@ -225,10 +214,8 @@ class SplashActivity : AppCompatActivity() {
         requestBatteryOptimizationExclusion()
 
         if (!hasOverlayPermission) {
-            Log.d("권한확인", "오버레이 권한 필요 - 다이얼로그 표시")
             showOverlayPermissionDialog(applicationContext)
         } else {
-            Log.d("권한확인", "오버레이 권한은 있지만 다른 권한 필요 - EtcPermissonActivity로 이동")
             moveToEtcPermissionActivity()
         }
     }
@@ -266,7 +253,6 @@ class SplashActivity : AppCompatActivity() {
 
         dialogPlus.show()
 
-        Log.e("확인", "다이얼로그 닫음4")
         val imageList = ArrayList<SlideModel>() // Create image list
         imageList.add(SlideModel(R.drawable.overlay_permission))
 
@@ -274,7 +260,7 @@ class SplashActivity : AppCompatActivity() {
         imageSlider.setImageList(imageList, ScaleTypes.CENTER_CROP)
 
         customView.movePermissionBtn.setOnSingleClickListener {
-            checkOverlayPermission() //todo 어레이 마지막 버튼시
+            checkOverlayPermission()
 
             // 권한 체크 작업 시작
             startPermissionCheck()
@@ -292,8 +278,6 @@ class SplashActivity : AppCompatActivity() {
                 delay(1000) // 1초마다 체크
 
                 if (Settings.canDrawOverlays(applicationContext)) {
-                    Log.d("권한확인", "오버레이 권한이 자동으로 감지됨")
-
                     // 앱을 foreground로 가져오기
                     val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
                     bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -348,20 +332,17 @@ class SplashActivity : AppCompatActivity() {
             intent.addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
 
             startActivity(intent)
-            Log.d("접근성설정", "앱 접근성 설정 화면으로 이동")
 
             // 권한 체크 작업 시작
             startAccessibilityPermissionCheck()
 
         } catch (e: Exception) {
-            Log.e("접근성설정", "접근성 설정 화면 열기 실패", e)
             // 실패 시 일반 접근성 설정으로 이동
             try {
                 val fallbackIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
                 fallbackIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(fallbackIntent)
             } catch (fallbackException: Exception) {
-                Log.e("접근성설정", "기본 접근성 설정도 열 수 없음", fallbackException)
                 Toast.makeText(this, "접근성 설정을 열 수 없습니다. 수동으로 설정 > 접근성으로 이동해주세요.", Toast.LENGTH_LONG)
                     .show()
             }
@@ -385,7 +366,6 @@ class SplashActivity : AppCompatActivity() {
                         com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
                     )
                 ) {
-                    Log.d("권한확인", "접근성 권한이 자동으로 감지됨")
 
                     // 앱을 foreground로 가져오기
                     val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
@@ -438,7 +418,6 @@ class SplashActivity : AppCompatActivity() {
             intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             activityResultLauncher.launch(intent)
         } else {
-//            showOverlay()
         }
     }
 
@@ -447,8 +426,6 @@ class SplashActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (Settings.canDrawOverlays(this)) {
-            Log.d("권한확인", "오버레이 권한이 허용되었습니다")
-
             // 앱을 foreground로 가져오기
             val bringToFrontIntent = Intent(this, SplashActivity::class.java)
             bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
@@ -456,16 +433,11 @@ class SplashActivity : AppCompatActivity() {
             startActivity(bringToFrontIntent)
 
             if (dialogPlus.isShowing) {
-                Log.e("확인", "다이얼로그 닫음1")
                 dialogPlus.dismiss()
                 moveToEtcPermissionActivity()
             }
         } else {
-            Log.d("권한확인", "오버레이 권한이 없습니다")
-            if (dialogPlus.isShowing) {
-                Log.e("확인", "다이얼로그 닫음2")
-                showOverlayPermissionDialog(applicationContext)
-            }
+            showOverlayPermissionDialog(applicationContext)
         }
     }
 
@@ -520,7 +492,6 @@ class SplashActivity : AppCompatActivity() {
                 }
             } else {
                 // 권한이 모두 승인되었을 때 처리할 코드 추가
-                Log.d("권한확인", "모든 권한이 승인되었습니다")
                 isPause = false // 권한이 승인된 경우 다이얼로그를 다시 표시할 수 있도록 초기화
             }
         }
@@ -545,7 +516,6 @@ class SplashActivity : AppCompatActivity() {
     private fun checkModelExists(): Boolean{
         val ggmlFile = File(filesDir, "ggml-small.bin")
         return if (ggmlFile.exists()) {
-            Log.d("모델확인", "모델 파일이 존재합니다")
             true
         }else{
             false

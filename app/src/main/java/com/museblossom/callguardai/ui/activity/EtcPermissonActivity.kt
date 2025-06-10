@@ -375,6 +375,9 @@ class EtcPermissonActivity : AppCompatActivity() {
     private fun finishWithSuccess() {
         Log.d("Permission", "모든 권한 완료 - 스플래시로 이동")
 
+        // CallGuard AI 서비스 활성화 상태를 SharedPreferences에 저장
+        saveServiceEnabledState()
+
         // 완료 메시지 표시
         Toast.makeText(
             this,
@@ -394,6 +397,24 @@ class EtcPermissonActivity : AppCompatActivity() {
             }
             startActivity(intent)
             finish()
+        }
+    }
+
+    /**
+     * CallGuard AI 서비스 활성화 상태를 SharedPreferences에 저장
+     */
+    private fun saveServiceEnabledState() {
+        try {
+            val prefs = getSharedPreferences("callguard_secure_prefs", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putBoolean("service_enabled", true)
+                putBoolean("is_first_run", false)
+                putLong("service_enabled_timestamp", System.currentTimeMillis())
+                apply()
+            }
+            Log.d("Permission", "CallGuard AI 서비스 활성화 상태 저장 완료")
+        } catch (e: Exception) {
+            Log.e("Permission", "서비스 상태 저장 실패", e)
         }
     }
 

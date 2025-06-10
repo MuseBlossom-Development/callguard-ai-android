@@ -1,0 +1,278 @@
+{
+  "api_base_url": "https://dev-deepvoice.museblossom.com/",
+  "endpoints": {
+    "stt_model_download": {
+      "method": "GET",
+      "url": "/model/stt",
+      "description": "STT 모델 다운로드 링크 요청",
+      "response_example": {
+        "code": 200,
+        "message": "성공",
+        "now": "2025-01-15T10:30:00Z",
+        "data": {
+          "md5": "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+          "downloadLink": "https://cdn.museblossom.com/models/whisper-small-korean.ggml"
+        }
+      }
+    },
+    "sns_login": {
+      "method": "POST",
+      "url": "/session/sns-login",
+      "description": "구글 SNS 로그인",
+      "request_example": {
+        "snsService": "GOOGLE",
+        "token": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjdkYzBiMjE..."
+      },
+      "response_example": {
+        "code": 200,
+        "message": "로그인 성공",
+        "now": "2025-01-15T10:30:00Z",
+        "data": {
+          "token": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+          "expiration": "2025-01-22T10:30:00Z"
+        }
+      }
+    },
+    "push_token_update": {
+      "method": "POST",
+      "url": "/session/token",
+      "description": "FCM Push Token 정보 갱신",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      },
+      "request_example": {
+        "pushToken": "f1a2b3c4d5e6f7g8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7"
+      },
+      "response_example": {
+        "code": 200,
+        "message": "푸시 토큰 업데이트 완료",
+        "now": "2025-01-15T10:30:00Z",
+        "data": null
+      }
+    },
+    "marketing_agreement": {
+      "method": "PUT",
+      "url": "/user/agree-marketing",
+      "description": "마케팅 동의 상태 업데이트",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      },
+      "request_example": {
+        "isAgreeMarketing": "Y"
+      },
+      "response_example": {
+        "code": 200,
+        "message": "마케팅 동의 상태 업데이트 완료",
+        "now": "2025-01-15T10:30:00Z",
+        "data": null
+      }
+    },
+    "cdn_url_request": {
+      "method": "POST",
+      "url": "/call/cdn-url",
+      "description": "오디오 파일 업로드를 위한 CDN URL 요청",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      },
+      "response_example": {
+        "code": 200,
+        "message": "CDN URL 생성 완료",
+        "now": "2025-01-15T10:30:00Z",
+        "data": {
+          "uuid": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+          "uploadPath": "https://cdn.museblossom.com/upload/audio/call-record-uuid-12345678-90ab-cdef-1234-567890abcdef.mp3"
+        }
+      }
+    },
+    "voice_text_analysis": {
+      "method": "POST",
+      "url": "/call/voice-text",
+      "description": "통화 텍스트 보이스피싱 분석 요청",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+      },
+      "request_example": {
+        "uuid": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+        "callText": "안녕하세요. 국세청 담당자입니다. 고객님께서 체납하신 세금이 있어서 연락드렸습니다. 지금 즉시 계좌이체로 납부하지 않으시면 재산이 압류될 수 있습니다."
+      },
+      "response_example": {
+        "code": 200,
+        "message": "텍스트 분석 완료",
+        "now": "2025-01-15T10:30:00Z",
+        "data": null
+      }
+    },
+    "audio_upload_to_cdn": {
+      "method": "PUT",
+      "url": "https://cdn.museblossom.com/upload/audio/call-record-uuid-12345678-90ab-cdef-1234-567890abcdef.mp3",
+      "description": "CDN에 오디오 파일 업로드",
+      "headers": {
+        "Content-Type": "audio/mpeg"
+      },
+      "request_body": "Binary audio data (MP3 format)",
+      "response_example": {
+        "status": 200,
+        "description": "파일 업로드 성공 (응답 바디 없음)"
+      }
+    },
+    "terms_inquiry": {
+      "method": "GET",
+      "url": "/terms",
+      "description": "약관 내용 조회",
+      "query_parameters": {
+        "termsType": "privacy",
+        "lang": "ko",
+        "version": 1
+      },
+      "response_example": {
+        "content_type": "text/html",
+        "body": "<!DOCTYPE html><html><head><title>개인정보처리방침</title></head><body>...</body></html>"
+      }
+    }
+  },
+  "fcm_push_notifications": {
+    "deep_voice_detection": {
+      "title": "딥보이스 감지",
+      "body": "통화 중 딥보이스가 감지되었습니다. 주의하세요!",
+      "data": {
+        "eventType": "DEEP_VOICE",
+        "probability": "75",
+        "callId": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+        "timestamp": "2025-01-15T10:30:00Z"
+      }
+    },
+    "voice_phishing_detection": {
+      "title": "보이스피싱 의심",
+      "body": "보이스피싱 패턴이 감지되었습니다. 즉시 통화를 종료하세요!",
+      "data": {
+        "eventType": "VOICE_PHISHING",
+        "probability": "90",
+        "callId": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+        "timestamp": "2025-01-15T10:30:00Z"
+      }
+    }
+  },
+  "error_responses": {
+    "authentication_error": {
+      "code": 401,
+      "message": "인증 토큰이 유효하지 않습니다",
+      "now": "2025-01-15T10:30:00Z",
+      "data": null
+    },
+    "permission_error": {
+      "code": 403,
+      "message": "접근 권한이 없습니다",
+      "now": "2025-01-15T10:30:00Z",
+      "data": null
+    },
+    "not_found_error": {
+      "code": 404,
+      "message": "요청한 리소스를 찾을 수 없습니다",
+      "now": "2025-01-15T10:30:00Z",
+      "data": null
+    },
+    "server_error": {
+      "code": 500,
+      "message": "서버 내부 오류가 발생했습니다",
+      "now": "2025-01-15T10:30:00Z",
+      "data": null
+    },
+    "ai_analysis_error": {
+      "code": 422,
+      "message": "AI 분석 처리 중 오류가 발생했습니다",
+      "now": "2025-01-15T10:30:00Z",
+      "data": {
+        "errorCode": "AI_PROCESSING_FAILED",
+        "details": "음성 파일 포맷이 지원되지 않습니다"
+      }
+    }
+  },
+  "local_analysis_results": {
+    "deep_voice_analysis": {
+      "type": "DEEP_VOICE",
+      "probability": 75,
+      "riskLevel": "MEDIUM",
+      "recommendation": "딥보이스가 감지되었습니다. 상대방 신원을 재확인하세요.",
+      "timestamp": 1642234200000,
+      "colorCode": "#ff8c00",
+      "statusMessage": "경고",
+      "requiresUserAction": true
+    },
+    "phishing_analysis": {
+      "type": "PHISHING",
+      "probability": 90,
+      "riskLevel": "HIGH",
+      "recommendation": "보이스피싱 패턴이 강하게 감지되었습니다. 즉시 통화를 종료하세요.",
+      "timestamp": 1642234200000,
+      "colorCode": "#c00000",
+      "statusMessage": "위험",
+      "requiresUserAction": true
+    },
+    "safe_call": {
+      "type": "DEEP_VOICE",
+      "probability": 15,
+      "riskLevel": "SAFE",
+      "recommendation": "안전한 통화입니다.",
+      "timestamp": 1642234200000,
+      "colorCode": "#37aa00",
+      "statusMessage": "안전",
+      "requiresUserAction": false
+    }
+  },
+  "call_flow_example": {
+    "step_1_call_detected": {
+      "description": "통화 시작 감지",
+      "action": "CallRecordingService 시작",
+      "data": {
+        "callId": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+        "phoneNumber": "+821012345678",
+        "direction": "INCOMING",
+        "startTime": "2025-01-15T10:30:00Z"
+      }
+    },
+    "step_2_audio_recording": {
+      "description": "60초 단위 오디오 녹음 및 분석",
+      "action": "Whisper STT + KoBERT 분석",
+      "data": {
+        "audioSegment": "audio_segment_001.mp3",
+        "duration": 60,
+        "sttText": "안녕하세요. 국세청에서 연락드립니다.",
+        "whisperConfidence": 0.95
+      }
+    },
+    "step_3_ai_analysis": {
+      "description": "AI 모델 분석 결과",
+      "local_analysis": {
+        "deepVoiceProbability": 75,
+        "phishingProbability": 85,
+        "riskLevel": "HIGH"
+      },
+      "server_request": {
+        "method": "POST",
+        "url": "/call/voice-text",
+        "body": {
+          "uuid": "call-record-uuid-12345678-90ab-cdef-1234-567890abcdef",
+          "callText": "안녕하세요. 국세청에서 연락드립니다. 체납세금 때문에 연락드렸는데..."
+        }
+      }
+    },
+    "step_4_user_alert": {
+      "description": "사용자 경고 알림",
+      "overlay_ui": {
+        "backgroundColor": "#c00000",
+        "warningText": "위험: 보이스피싱 의심",
+        "vibrationPattern": [
+          0,
+          500,
+          100,
+          500
+        ]
+      },
+      "push_notification": {
+        "title": "CallGuard AI 경고",
+        "body": "현재 통화에서 보이스피싱이 의심됩니다!",
+        "priority": "high"
+      }
+    }
+  }
+}

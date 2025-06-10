@@ -79,7 +79,6 @@ class Recorder(
     }
 
     init {
-        Log.d("AppLog", "레코드 실행시점")
     }
 
 
@@ -92,8 +91,6 @@ class Recorder(
         startTime = System.currentTimeMillis()
         handler.post(updateTimeRunnable)
         val filepath = getFilePath(context)
-        Log.d("AppLog", "About to record into $filepath")
-        //Toast.makeText(getApplicationContext(), "Recorder_Started" + fname, Toast.LENGTH_LONG).show();
         if (mediaRecorder != null) {
             mediaRecorder!!.stop()
             mediaRecorder!!.reset()
@@ -114,7 +111,6 @@ class Recorder(
         audioSource = getSavedAudioSource(context)
         val audioSource: AudioSource = audioSource!!
         if (audioSource == AudioSource.MIC) {
-            Log.i("확인", "마이크 녹음")
             val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
             audioManager.mode = AudioManager.MODE_IN_CALL
             audioManager.isSpeakerphoneOn = true
@@ -155,14 +151,11 @@ class Recorder(
             file.delete()
         mediaRecorder!!.setOutputFile(filepath)
         try {
-            Log.d("AppLog", "preparing to record using audio source:$audioSource")
             mediaRecorder!!.prepare()
             val runnable = Runnable {
                 if (mediaRecorder != null)
                     try {
-                        Log.d("AppLog", "starting record")
                         mediaRecorder!!.start()
-                        Log.d("AppLog", "started to record")
 //                        Toast.makeText(context, "통화 녹음 중 입니다", Toast.LENGTH_SHORT).show()
                     } catch (e: Exception) {
                         Log.e("AppLog", "error while recording:$e")
@@ -190,19 +183,14 @@ class Recorder(
     }
 
     fun stopRecording(isUserStop: Boolean? = false, isIsOnlyWhisper: Boolean? = false) {
-        Log.d("STT탐지", "STT탐지 확인 : $isIsOnlyWhisper")
         if (isIsOnlyWhisper == true) {
-            Log.d("STT탐지", "녹음 중지 STT탐지만")
         }
         try {
             if (!isRecording) {
                 handler.removeCallbacks(updateTimeRunnable)
-                Log.d("AppLog", "전화 녹음 중지2")
                 return
             }
             isRecording = false
-            Log.d("AppLog", "stopping record process")
-            Log.d("AppLog", "전화 녹음 중지3")
             if (mediaRecorder != null) {
                 try {
                     mediaRecorder!!.stop()
@@ -212,7 +200,6 @@ class Recorder(
                 mediaRecorder!!.release()
                 mediaRecorder = null
             }
-            Log.d("AppLog", "stopped record process")
             if (audioSource == AudioSource.MIC) {
                 val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
                 audioManager.mode = AudioManager.MODE_NORMAL
@@ -231,7 +218,6 @@ class Recorder(
                 }
             }
             if (isIsOnlyWhisper == true) {
-                Log.d("STT탐지", "STT탐지만 처리")
                 convertToWavWhisper(getFilePath(context), getFilePath(context) + "STT탐지.wav")
             }
         } catch (e: Exception) {
@@ -255,7 +241,6 @@ class Recorder(
         FFmpegKit.executeAsync(ffmpegCommand) { session ->
             val returnCode = session.returnCode
             if (returnCode.isValueSuccess) {
-                Log.d("FFmpeg", "딥보이스 wav 변환 성공 : $outputMp3FilePath")
 //                convertMp3ToPcm(inputFilePath, getFilePath(context) + "_.wav")
 //                recorderListener?.onWaveConvertComplete(outputMp3FilePath)
                 CoroutineScope(Dispatchers.IO).launch {
@@ -288,7 +273,6 @@ class Recorder(
         FFmpegKit.executeAsync(ffmpegCommand) { session ->
             val returnCode = session.returnCode
             if (returnCode.isValueSuccess) {
-                Log.d("FFmpeg", "STT탐지 wav 변환 성공 : $outputMp3FilePath")
 //                convertMp3ToPcm(inputFilePath, getFilePath(context) + "_.wav")
                 recorderListener?.onWaveConvertComplete(outputMp3FilePath)
             } else {
@@ -322,7 +306,6 @@ class Recorder(
 
     private fun getFileSize(context: Context): Long {
         var file = File(getFilePath(context))
-        Log.e("파일 사이즈", "녹음 파일 사이즈 확인 : ${file.length()}")
         return file.length()
     }
 

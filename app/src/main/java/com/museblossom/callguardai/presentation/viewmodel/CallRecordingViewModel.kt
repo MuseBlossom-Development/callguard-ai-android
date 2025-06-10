@@ -270,10 +270,11 @@ class CallRecordingViewModel @Inject constructor(
             if (newCount >= MAX_NO_DETECTION_COUNT && !isRecording && currentCount > 0) {
                 Log.d(TAG, "${MAX_NO_DETECTION_COUNT}회 연속 위협 미감지. 오버레이 숨김")
                 _shouldShowOverlay.value = false
+
             }
         } else {
-            _noDetectionCount.value = 0
-            Log.d(TAG, "위협 감지됨. 연속 미감지 카운트 초기화")
+//            _noDetectionCount.value = 0
+//            Log.d(TAG, "위협 감지됨. 연속 미감지 카운트 초기화")
         }
     }
 
