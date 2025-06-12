@@ -85,9 +85,9 @@ object AppModule {
     @Singleton
     fun provideAudioAnalysisRepository(
         @ApplicationContext context: Context,
-        mp3UploadService: Mp3UploadService
+        callGuardRepository: CallGuardRepositoryInterface
     ): AudioAnalysisRepositoryInterface {
-        return AudioAnalysisRepositoryImpl(context, mp3UploadService)
+        return AudioAnalysisRepositoryImpl(context, callGuardRepository)
     }
 
     @Provides

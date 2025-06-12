@@ -37,7 +37,7 @@ interface CallGuardRepositoryInterface {
     suspend fun getCDNUrl(): Result<CDNUrlData>
 
     /**
-     * CDN에 오디오 파일 업로드
+     * CDN에 파일 업로드 (오디오/텍스트 파일 모두 지원)
      */
     suspend fun uploadAudioToCDN(uploadUrl: String, audioFile: File): Result<Unit>
 

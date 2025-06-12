@@ -132,17 +132,18 @@ class MainViewModel @Inject constructor(
      * 오디오 파일 분석 시작
      * 책임: 파일 기반 딥보이스 분석 요청 처리
      */
-    fun analyzeAudioFile(audioFile: File) {
+    fun analyzeAudioFile(audioFile: File, uploadUrl: String) {
         viewModelScope.launch {
             try {
                 startAnalysis()
                 Log.d(TAG, "오디오 파일 분석 시작: ${audioFile.name}")
 
-                val result = analyzeAudioUseCase.analyzeDeepVoice(audioFile)
+                val result = analyzeAudioUseCase.uploadForDeepVoiceAnalysis(audioFile, uploadUrl)
 
                 result.fold(
-                    onSuccess = { analysisResult ->
-                        handleAnalysisSuccess(analysisResult)
+                    onSuccess = {
+                        Log.d(TAG, "딥보이스 분석용 파일 업로드 성공 - FCM 결과 대기 중")
+                        _uiState.value = UiState.ANALYZING
                     },
                     onFailure = { exception ->
                         handleAnalysisError("파일 분석 실패: ${exception.message}", exception)
@@ -157,30 +158,30 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * 바이트 배열 오디오 분석
+     * 바이트 배열 오디오 분석 (콜백 방식)
      * 책임: 실시간 오디오 데이터 분석 요청 처리
      */
-    fun analyzeAudioBytes(audioBytes: ByteArray) {
-        viewModelScope.launch {
-            try {
-                startAnalysis()
-                Log.d(TAG, "오디오 바이트 분석 시작: ${audioBytes.size} bytes")
+    fun analyzeAudioBytes(audioFile: File, uploadUrl: String) {
+        try {
+            startAnalysis()
+            Log.d(TAG, "오디오 바이트 분석 시작: ${audioFile.name}")
 
-                val result = analyzeAudioUseCase.analyzeDeepVoiceFromBytes(audioBytes)
-
-                result.fold(
-                    onSuccess = { analysisResult ->
-                        handleAnalysisSuccess(analysisResult)
-                    },
-                    onFailure = { exception ->
-                        handleAnalysisError("바이트 분석 실패: ${exception.message}", exception)
-                    }
-                )
-            } catch (e: Exception) {
-                handleAnalysisError("예상치 못한 오류: ${e.message}", e)
-            } finally {
-                stopAnalysis()
-            }
+            analyzeAudioUseCase.analyzeDeepVoiceCallback(
+                audioFile = audioFile,
+                uploadUrl = uploadUrl,
+                onSuccess = {
+                    Log.d(TAG, "딥보이스 분석용 파일 업로드 성공 - FCM 결과 대기 중")
+                    _uiState.value = UiState.ANALYZING
+                    stopAnalysis()
+                },
+                onError = { error ->
+                    handleAnalysisError("바이트 분석 실패: $error", Exception(error))
+                    stopAnalysis()
+                }
+            )
+        } catch (e: Exception) {
+            handleAnalysisError("예상치 못한 오류: ${e.message}", e)
+            stopAnalysis()
         }
     }
 

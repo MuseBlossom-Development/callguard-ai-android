@@ -88,6 +88,7 @@ class CallRecordingService : Service() {
     private var currentCallUuid: String? = null
     private var currentPhoneNumber: String? = null
     private var callStartTime: Long = 0
+    private var currentCDNUploadPath: String? = null
 
     // UI 관련
     private lateinit var windowManager: WindowManager
@@ -278,7 +279,9 @@ class CallRecordingService : Service() {
                     handleDeepVoiceAnalysis(probability)
                 }
             },
-            audioAnalysisRepository = audioAnalysisRepository
+            audioAnalysisRepository = audioAnalysisRepository,
+            currentCDNUploadPath = currentCDNUploadPath,
+            currentCallUuid = currentCallUuid
         )
 
         setRecordListener()
@@ -704,30 +707,57 @@ class CallRecordingService : Service() {
         serviceScope.launch {
             try {
                 if (result.isNotBlank()) {
-                    // 실제 서버로 보이스피싱 텍스트 전송 (UUID와 함께)
-                    currentCallUuid?.let { uuid ->
-                        try {
-                            callGuardUseCase.sendVoicePhishingText(uuid, result)
-                            Log.i(
-                                TAG,
-                                "서버 전송 완료${if (isLastProcessing) " [마지막]" else ""}: UUID=$uuid"
-                            )
-                        } catch (e: Exception) {
-                            Log.e(TAG, "서버 전송 실패", e)
-                        }
+                    val uuid = currentCallUuid
+                    val cdnUploadPath = currentCDNUploadPath
+
+                    if (uuid == null) {
+                        Log.e(TAG, "currentCallUuid가 null로 CDN 업로드 실패")
+                        return@launch
                     }
 
-                    // 실제 KoBERT 처리 대신 임시로 피싱 감지 로직
-                    val isPhishing =
-                        result.contains("피싱") || result.contains("계좌") || result.contains("송금") || result.contains(
-                            "대출"
-                        )
+                    if (cdnUploadPath.isNullOrEmpty()) {
+                        Log.e(TAG, "CDN 업로드 경로가 없어서 TXT 파일 업로드를 건너뜀")
+                        return@launch
+                    }
 
-                    withContext(Dispatchers.Main) {
-                        handlePhishingAnalysis(result, isPhishing)
+                    try {
+                        // 1. 텍스트를 TXT 파일로 저장
+                        val timestamp = System.currentTimeMillis()
+                        val txtFileName = "${uuid}_transcription_${timestamp}.txt"
+                        val txtFile = File(cacheDir, txtFileName)
+                        txtFile.writeText(result)
 
-                        // 마지막 처리가 아닌 경우에만 녹음 재시작
-                        if (!isPhishing && !isLastProcessing) {
+                        // 2. TXT 파일용 업로드 URL 생성
+                        val baseUrl = cdnUploadPath.substringBeforeLast('/') + "/"
+                        val originalFileName =
+                            cdnUploadPath.substringAfterLast('/').substringBefore('?')
+                        val queryParams =
+                            if ('?' in cdnUploadPath) "?" + cdnUploadPath.substringAfter('?') else ""
+
+                        // {UUID}_{FILE_NAME}.txt 형식으로 URL 생성
+                        val txtUploadUrl = baseUrl + txtFileName + queryParams
+
+                        Log.d(TAG, "TXT 파일 CDN 업로드: $txtFileName")
+
+                        // 3. TXT 파일을 CDN에 업로드
+                        val uploadResult = callGuardUseCase.uploadFileToCDN(txtUploadUrl, txtFile)
+
+                        if (uploadResult.isSuccess) {
+                            Log.i(TAG, "텍스트 파일 업로드 성공 - FCM 분석 결과 대기: $txtFileName")
+                        } else {
+                            Log.e(TAG, "텍스트 파일 업로드 실패: ${uploadResult.exceptionOrNull()?.message}")
+                        }
+
+                        // 4. 임시 파일 삭제
+                        txtFile.delete()
+
+                    } catch (e: Exception) {
+                        Log.e(TAG, "TXT 파일 처리 중 오류", e)
+                    }
+
+                    // 마지막 처리가 아닌 경우에만 녹음 재시작
+                    if (!isLastProcessing) {
+                        withContext(Dispatchers.Main) {
                             isOnlyWhisper = true
                             startRecording(isOnlyWhisper)
                         }
@@ -926,17 +956,34 @@ class CallRecordingService : Service() {
             try {
                 val cdnResult = callGuardUseCase.getCDNUrl()
 
-                if (!cdnResult.isSuccess) {
-                    currentCallUuid = UUID.randomUUID().toString()
+                if (cdnResult.isSuccess) {
+                    val cdnData = cdnResult.getOrNull()
+                    if (cdnData != null) {
+                        currentCallUuid = cdnData.uuid  // 서버에서 발급받은 UUID 사용
+                        currentCDNUploadPath = cdnData.uploadPath
 
-                    // 통화 기록 저장
-                    currentPhoneNumber?.let { phoneNumber ->
-                        val callRecord = com.museblossom.callguardai.data.model.CallRecord(
-                            uuid = currentCallUuid!!,
-                            phoneNumber = phoneNumber,
-                            callStartTime = callStartTime
+                        Log.d(
+                            TAG,
+                            "CDN URL 요청 성공 - UUID: ${currentCallUuid}, 업로드 경로: ${currentCDNUploadPath}"
                         )
-                        callRecordRepository.saveCallRecord(callRecord)
+
+                        // 통화 기록 저장
+                        currentPhoneNumber?.let { phoneNumber ->
+                            val callRecord = com.museblossom.callguardai.data.model.CallRecord(
+                                uuid = currentCallUuid!!,
+                                phoneNumber = phoneNumber,
+                                callStartTime = callStartTime
+                            )
+                            callRecordRepository.saveCallRecord(callRecord)
+                        }
+
+                        // Recorder에 UUID와 CDN 경로 업데이트
+                        updateRecorderMetadata(currentCallUuid!!, currentCDNUploadPath!!)
+                    } else {
+                        Log.e(TAG, "CDN URL API 호출 실패: 결과가 null입니다")
+                        // API 호출 실패 시 임시 UUID 생성
+                        currentCallUuid = java.util.UUID.randomUUID().toString()
+                        Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
                     }
                 } else {
                     Log.e(TAG, "CDN URL API 호출 실패: ${cdnResult.exceptionOrNull()?.message}")
@@ -1061,6 +1108,7 @@ class CallRecordingService : Service() {
         currentCallUuid = null
         currentPhoneNumber = null
         callStartTime = 0
+        currentCDNUploadPath = null
 
         Log.d(TAG, "통화 종료 완료, 서비스 중지")
         stopSelf()
@@ -1094,5 +1142,12 @@ class CallRecordingService : Service() {
         object RequestStop : CallRecordingEvent()
         data class UpdatePhishing(val detected: Boolean) : CallRecordingEvent()
         data class UpdateDeepVoice(val detected: Boolean) : CallRecordingEvent()
+    }
+
+    /**
+     * Updates recorder with current call UUID and CDN upload path
+     */
+    private fun updateRecorderMetadata(uuid: String, uploadPath: String) {
+        recorder.updateRecorderMetadata(uuid, uploadPath)
     }
 }

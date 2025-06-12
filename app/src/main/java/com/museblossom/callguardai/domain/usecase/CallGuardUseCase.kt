@@ -117,6 +117,19 @@ class CallGuardUseCase @Inject constructor(
         }
 
     /**
+     * 파일을 CDN에 업로드 (오디오/텍스트 파일 모두 지원)
+     */
+    suspend fun uploadFileToCDN(uploadUrl: String, file: File): Result<Unit> =
+        withContext(dispatcher) {
+            try {
+                repository.uploadAudioToCDN(uploadUrl, file)
+            } catch (e: Exception) {
+                Log.e(TAG, "파일 CDN 업로드 실패", e)
+                Result.failure(e)
+            }
+        }
+
+    /**
      * 로그인 상태 확인
      */
     suspend fun isLoggedIn(): Boolean = withContext(dispatcher) {

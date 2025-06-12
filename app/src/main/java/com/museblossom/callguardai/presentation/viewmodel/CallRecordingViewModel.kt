@@ -251,22 +251,14 @@ class CallRecordingViewModel @Inject constructor(
     /**
      * 네트워크를 통한 딥보이스 분석
      */
-    fun analyzeDeepVoiceFromNetwork(audioFile: File) {
+    fun analyzeDeepVoiceFromNetwork(audioFile: File, uploadUrl: String) {
         viewModelScope.launch {
             try {
-                val result = analyzeAudioUseCase.analyzeDeepVoice(audioFile)
+                val result = analyzeAudioUseCase.uploadForDeepVoiceAnalysis(audioFile, uploadUrl)
                 result.fold(
-                    onSuccess = { analysisResult ->
-                        _deepVoiceResult.value = analysisResult
-                        val isDetected = analysisResult.probability >= 50
-                        _isDeepVoiceDetected.value = isDetected
-
-                        if (isDetected) {
-                            _shouldVibrate.value = true
-                            updateOverlayState(analysisResult)
-                            updateDeepVoiceUiData(analysisResult)
-                        }
-                        checkAndHideOverlay()
+                    onSuccess = {
+                        Log.d(TAG, "딥보이스 분석용 파일 업로드 성공 - FCM 결과 대기 중")
+                        _toastMessage.value = "분석을 위해 파일을 업로드했습니다. 결과를 기다리는 중..."
                     },
                     onFailure = { exception ->
                         Log.e(TAG, "네트워크 딥보이스 분석 실패", exception)

@@ -18,7 +18,7 @@ class AnalyzeAudioUseCase(
 ) {
     companion object {
         private const val TAG = "AnalyzeAudioUseCase"
-        
+
         // 위험도 임계값
         private const val HIGH_RISK_THRESHOLD = 80
         private const val MEDIUM_RISK_THRESHOLD = 60
@@ -33,12 +33,12 @@ class AnalyzeAudioUseCase(
      */
     suspend fun uploadForDeepVoiceAnalysis(audioFile: File, uploadUrl: String): Result<Unit> =
         withContext(dispatcher) {
-        try {
-            Log.d(TAG, "딥보이스 분석을 위한 CDN 업로드 시작: ${audioFile.name}")
-            
-            if (!audioFile.exists()) {
-                return@withContext Result.failure(Exception("오디오 파일이 존재하지 않습니다: ${audioFile.path}"))
-            }
+            try {
+                Log.d(TAG, "딥보이스 분석을 위한 CDN 업로드 시작: ${audioFile.name}")
+
+                if (!audioFile.exists()) {
+                    return@withContext Result.failure(Exception("오디오 파일이 존재하지 않습니다: ${audioFile.path}"))
+                }
 
             val result = audioAnalysisRepository.uploadForDeepVoiceAnalysis(audioFile, uploadUrl)
 
@@ -53,7 +53,7 @@ class AnalyzeAudioUseCase(
             Log.e(TAG, "딥보이스 분석 업로드 중 예상치 못한 오류", e)
             Result.failure(e)
         }
-    }
+        }
 
     /**
      * 딥보이스 분석 콜백 방식 (CDN 업로드)
@@ -94,14 +94,14 @@ class AnalyzeAudioUseCase(
             probability >= LOW_RISK_THRESHOLD -> AnalysisResult.RiskLevel.LOW
             else -> AnalysisResult.RiskLevel.SAFE
         }
-        
+
         val recommendation = when (riskLevel) {
             AnalysisResult.RiskLevel.HIGH -> "즉시 통화를 종료하세요!"
             AnalysisResult.RiskLevel.MEDIUM -> "주의가 필요합니다. 통화 내용을 신중히 판단하세요."
             AnalysisResult.RiskLevel.LOW -> "주의하여 통화를 진행하세요."
             AnalysisResult.RiskLevel.SAFE -> "안전한 통화로 판단됩니다."
         }
-        
+
         return AnalysisResult(
             type = AnalysisResult.Type.DEEP_VOICE,
             probability = probability,

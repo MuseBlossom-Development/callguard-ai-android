@@ -23,12 +23,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.*
 
 class Recorder(
     context: Context,
     private val callback: (Int) -> Unit,
     private val detectCallback: (Boolean, Int) -> Unit,
-    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface
+    private val audioAnalysisRepository: AudioAnalysisRepositoryInterface,
+    private var currentCDNUploadPath: String? = null,
+    private var currentCallUuid: String? = null
 ) {
     private val context: Context
     private var currentRecordingFile: String? = null
@@ -56,17 +59,19 @@ class Recorder(
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO // 모노
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT // 16-bit PCM
 
-        fun getFilePath(context: Context): String {
+        fun getFilePath(context: Context, uuid: String? = null): String {
+            val baseName = if (uuid == null) System.currentTimeMillis().toString() else uuid
             return File(
                 context.filesDir,
-                "call_recording/${System.currentTimeMillis()}.wav"
+                "call_recording/${baseName}.wav"
             ).absolutePath
         }
 
-        fun getKakaoFilePath(context: Context): String {
+        fun getKakaoFilePath(context: Context, uuid: String? = null): String {
+            val baseName = if (uuid == null) System.currentTimeMillis().toString() else uuid
             return File(
                 context.filesDir,
-                "call_recording/${System.currentTimeMillis()}" + "_Kakao_.wav"
+                "call_recording/${baseName}_Kakao_.wav"
             ).absolutePath
         }
 
@@ -132,7 +137,9 @@ class Recorder(
             throw RuntimeException("AudioRecord 초기화 실패")
         }
 
-        val filepath = getFilePath(context)
+        // 서버에서 받은 UUID 사용, 없으면 타임스탬프 사용
+        val uuid = currentCallUuid ?: System.currentTimeMillis().toString()
+        val filepath = getFilePath(context, uuid)
         currentRecordingFile = filepath
         val file = File(filepath)
         file.parentFile?.mkdirs()
@@ -149,7 +156,9 @@ class Recorder(
      * MediaRecorder 폴백 (기존 방식)
      */
     private fun startMediaRecorderRecording() {
-        val filepath = getFilePath(context)
+        // 서버에서 받은 UUID 사용, 없으면 타임스탬프 사용
+        val uuid = currentCallUuid ?: System.currentTimeMillis().toString()
+        val filepath = getFilePath(context, uuid)
 
         if (mediaRecorder != null) {
             mediaRecorder!!.stop()
@@ -446,7 +455,7 @@ class Recorder(
     }
 
     /**
-     * 딥페이크 분석 - 전용 파일 사용
+     * 딥페이크 분석 - CDN 업로드 방식
      */
     private suspend fun processDeepVoiceAnalysis(audioFile: File) {
         withContext(Dispatchers.IO) {
@@ -461,37 +470,63 @@ class Recorder(
                 return@withContext
             }
 
-            audioAnalysisRepository.analyzeDeepVoiceCallback(
-                audioFile = audioFile,
-                onSuccess = { aiProbability ->
-                    detectCallback(true, aiProbability)
+            // CDN 업로드 경로가 있는 경우만 처리
+            currentCDNUploadPath?.let { cdnPath ->
+                currentCallUuid?.let { uuid ->
+                    try {
+                        // {UUID}_{FILE_NAME}.mp3 형식으로 업로드 URL 생성
+                        val baseUrl = cdnPath.substringBeforeLast('/') + "/"
+                        val queryParams =
+                            if ('?' in cdnPath) "?" + cdnPath.substringAfter('?') else ""
+                        val deepVoiceFileName =
+                            "${uuid}_deepvoice_${System.currentTimeMillis()}.mp3"
+                        val deepVoiceUploadUrl = baseUrl + deepVoiceFileName + queryParams
 
-                    // 분석 완료 후 임시 파일 정리
-                    CoroutineScope(Dispatchers.IO).launch {
+                        Log.d("녹음", "딥보이스 분석용 CDN 업로드: $deepVoiceFileName")
+
+                        // CDN 업로드 방식으로 변경
+                        audioAnalysisRepository.analyzeDeepVoiceCallback(
+                            audioFile = audioFile,
+                            uploadUrl = deepVoiceUploadUrl,
+                            onSuccess = {
+                                Log.d("녹음", "딥보이스 분석용 파일 업로드 완료 - FCM 결과 대기: $deepVoiceFileName")
+                                // FCM에서 결과를 받을 때까지 대기
+                            },
+                            onError = { error ->
+                                Log.e("딥보이스", "딥보이스 분석 업로드 실패: $error")
+                                // 기본값으로 콜백 호출
+                                detectCallback(false, 0)
+                            }
+                        )
+
+                        // 분석 완료 후 임시 파일 정리
+                        kotlinx.coroutines.delay(1000) // 업로드 완료 대기
                         try {
                             if (audioFile.exists()) {
                                 audioFile.delete()
+                            } else {
+                                // else 분기 추가
+                                Log.w(
+                                    "녹음",
+                                    "딥보이스 분석 파일이 존재하지 않아 삭제하지 않음: ${audioFile.absolutePath}"
+                                )
                             }
                         } catch (e: Exception) {
-                            Log.w("녹음", "딥페이크 분석 파일 정리 실패", e)
+                            Log.w("녹음", "딥보이스 분석 파일 정리 실패", e)
                         }
-                    }
-                },
-                onError = { error ->
-                    Log.e("딥보이스", "딥보이스 분석 실패: $error")
 
-                    // 실패 시에도 파일 정리
-                    CoroutineScope(Dispatchers.IO).launch {
-                        try {
-                            if (audioFile.exists()) {
-                                audioFile.delete()
-                            }
-                        } catch (e: Exception) {
-                            Log.w("녹음", "딥페이크 분석 파일 정리 실패", e)
-                        }
+                    } catch (e: Exception) {
+                        Log.e("녹음", "딥보이스 CDN 업로드 중 오류", e)
+                        detectCallback(false, 0)
                     }
+                } ?: run {
+                    Log.e("녹음", "UUID가 없어 딥보이스 분석 불가")
+                    detectCallback(false, 0)
                 }
-            )
+            } ?: run {
+                Log.e("녹음", "CDN 업로드 경로가 없어 딥보이스 분석 불가")
+                detectCallback(false, 0)
+            }
         }
     }
 
@@ -600,6 +635,15 @@ class Recorder(
 
     fun setRecordListner(listner: RecorderListner) {
         recorderListener = listner
+    }
+
+    /**
+     * 통화 정보 업데이트 (UUID와 CDN 경로)
+     */
+    fun updateRecorderMetadata(uuid: String, cdnUploadPath: String) {
+        currentCallUuid = uuid
+        currentCDNUploadPath = cdnUploadPath
+        Log.d("녹음", "Recorder 정보 업데이트 - UUID: $uuid, CDN 경로: $cdnUploadPath")
     }
 
     // 권한 확인 함수
