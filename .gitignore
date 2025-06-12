@@ -16,3 +16,6 @@ local.properties
 
 # Ignore ChatHistory_schema_v2 file
 .idea/ChatHistory_schema_v2.xml
+
+# Android project directory
+whisper/

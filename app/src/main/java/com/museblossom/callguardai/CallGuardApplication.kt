@@ -3,6 +3,7 @@ package com.museblossom.callguardai
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -25,6 +26,50 @@ class CallGuardApplication : Application() {
         fun applicationContext(): Context =
             instance?.applicationContext
                 ?: throw IllegalStateException("Application not created yet")
+
+        // 테스트 모드 관련 상수
+        private const val PREF_TEST_MODE = "test_mode_preferences"
+        private const val KEY_TEST_MODE_ENABLED = "test_mode_enabled"
+        private const val KEY_TEST_AUDIO_FILE = "test_audio_file"
+        private const val DEFAULT_TEST_AUDIO_FILE = "samples/1232.mp3"
+
+        /**
+         * 테스트 모드 활성화 여부 확인
+         */
+        fun isTestModeEnabled(): Boolean {
+            return instance?.getTestModePreferences()
+                ?.getBoolean(KEY_TEST_MODE_ENABLED, false) ?: false
+        }
+
+        /**
+         * 테스트 모드 활성화/비활성화 설정
+         */
+        fun setTestModeEnabled(enabled: Boolean) {
+            instance?.getTestModePreferences()
+                ?.edit()
+                ?.putBoolean(KEY_TEST_MODE_ENABLED, enabled)
+                ?.apply()
+            Log.d("TestMode", "테스트 모드 ${if (enabled) "활성화" else "비활성화"}됨")
+        }
+
+        /**
+         * 테스트용 오디오 파일 경로 가져오기
+         */
+        fun getTestAudioFile(): String {
+            return instance?.getTestModePreferences()
+                ?.getString(KEY_TEST_AUDIO_FILE, DEFAULT_TEST_AUDIO_FILE) ?: DEFAULT_TEST_AUDIO_FILE
+        }
+
+        /**
+         * 테스트용 오디오 파일 경로 설정
+         */
+        fun setTestAudioFile(filePath: String) {
+            instance?.getTestModePreferences()
+                ?.edit()
+                ?.putString(KEY_TEST_AUDIO_FILE, filePath)
+                ?.apply()
+            Log.d("TestMode", "테스트 오디오 파일 설정: $filePath")
+        }
     }
 
     // 애플리케이션 레벨 코루틴 스코프
@@ -44,6 +89,14 @@ class CallGuardApplication : Application() {
         checkBatteryOptimization()
 
         Log.d("CallGuardApp", "애플리케이션 초기화 완료")
+        Log.d("TestMode", "테스트 모드: ${if (isTestModeEnabled()) "활성화" else "비활성화"}")
+    }
+
+    /**
+     * 테스트 모드 설정용 SharedPreferences 가져오기
+     */
+    private fun getTestModePreferences(): SharedPreferences {
+        return getSharedPreferences(PREF_TEST_MODE, Context.MODE_PRIVATE)
     }
 
     private fun initializeFCM() {

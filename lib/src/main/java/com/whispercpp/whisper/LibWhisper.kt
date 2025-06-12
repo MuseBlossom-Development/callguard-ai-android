@@ -7,7 +7,6 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.io.InputStream
 import java.util.concurrent.Executors
-import java.util.concurrent.RejectedExecutionException
 
 private const val LOG_TAG = "LibWhisper"
 
@@ -17,7 +16,7 @@ class WhisperContext private constructor(private var ptr: Long) {
         Executors.newSingleThreadExecutor().asCoroutineDispatcher()
     )
 
-    suspend fun transcribeData(data: FloatArray, printTimestamp: Boolean = false): String = withContext(scope.coroutineContext) {
+    suspend fun transcribeData(data: FloatArray, printTimestamp: Boolean = true): String = withContext(scope.coroutineContext) {
         require(ptr != 0L)
         val numThreads = WhisperCpuConfig.preferredThreadCount
         Log.d(LOG_TAG, "Selecting $numThreads threads")
@@ -25,13 +24,14 @@ class WhisperContext private constructor(private var ptr: Long) {
         val textCount = WhisperLib.getTextSegmentCount(ptr)
         return@withContext buildString {
             for (i in 0 until textCount) {
-                if (printTimestamp) {
-                    val textTimestamp = "[${toTimestamp(WhisperLib.getTextSegmentT0(ptr, i))} --> ${toTimestamp(WhisperLib.getTextSegmentT1(ptr, i))}]"
-                    val textSegment = WhisperLib.getTextSegment(ptr, i)
-                    append("$textTimestamp: $textSegment\n")
-                } else {
-                    append(WhisperLib.getTextSegment(ptr, i))
-                }
+//                if (printTimestamp) {
+//                    val textTimestamp = "[${toTimestamp(WhisperLib.getTextSegmentT0(ptr, i))} --> ${toTimestamp(WhisperLib.getTextSegmentT1(ptr, i))}]"
+//                    val textSegment = WhisperLib.getTextSegment(ptr, i)
+//                    append("$textTimestamp: $textSegment\n")
+//                } else {
+//                    append(WhisperLib.getTextSegment(ptr, i))
+//                }
+                append(WhisperLib.getTextSegment(ptr, i))
             }
         }
     }
@@ -52,26 +52,9 @@ class WhisperContext private constructor(private var ptr: Long) {
     }
 
     protected fun finalize() {
-        if (ptr != 0L) { // 아직 해제되지 않았다면 시도 (중복 해제 방지)
-            runCatching {
-                // finalize 스레드에서 runBlocking으로 코루틴을 실행합니다.
-                // 이때 내부적으로 사용되는 스레드 풀이 이미 종료되었을 수 있습니다.
-                runBlocking {
-                    release() // suspend 함수인 release() 호출
-                }
-            }.onFailure { e ->
-                // CancellationException과 RejectedExecutionException은 무시하거나 경고로 로깅
-                // 이는 대부분 서비스 종료 과정에서 발생하는 정상적인 상황일 수 있습니다.
-                if (e is CancellationException || e is RejectedExecutionException) {
-                    Log.w(LOG_TAG, "Finalizer: WhisperContext 해제 중 작업 거부 또는 취소 예외 발생 (일반적 상황): ${e.message}")
-                } else {
-                    // 그 외 다른 예외는 오류로 로깅하여 문제 파악에 도움
-                    Log.e(LOG_TAG, "Finalizer: WhisperContext 해제 중 예상치 못한 오류 발생", e)
-                }
-            }
+        runBlocking {
+            release()
         }
-        // super.finalize()는 코틀린에서는 명시적으로 호출할 필요가 없습니다.
-        // 자바 finalize()는 protected 이므로, 코틀린 protected fun finalize()는 자바의 protected finalize()를 오버라이드한 것으로 간주됩니다.
     }
 
     companion object {

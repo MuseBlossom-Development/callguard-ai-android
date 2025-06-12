@@ -37,13 +37,13 @@
     <TextView
         android:id="@+id/ai_"
         android:layout_width="148dp"
-        android:layout_height="60dp"
+        android:layout_height="70dp"
         android:layout_marginTop="324dp"
         android:fontFamily="@font/pretendard_medium"
         android:gravity="center_horizontal|top"
         android:text="안전한 통화를 위한\nAI 보호 서비스"
         android:textColor="#4D4D4D"
-        android:textSize="19sp"
+        android:textSize="19dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />

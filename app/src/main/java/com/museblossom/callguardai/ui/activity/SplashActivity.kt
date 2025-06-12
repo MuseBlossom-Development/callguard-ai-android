@@ -61,6 +61,12 @@ class SplashActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private var permissionCheckJob: Job? = null
 
+    // 테스트 모드 토글을 위한 변수들
+    private var logoTapCount = 0
+    private var lastTapTime = 0L
+    private val TAP_TIMEOUT = 2000L // 2초 이내에 탭해야 함
+    private val REQUIRED_TAPS = 5 // 5번 탭 필요
+
     override fun onResume() {
         super.onResume()
     }
@@ -88,7 +94,106 @@ class SplashActivity : AppCompatActivity() {
         statusTextView = binding.downloadSt
         progressBar = binding.progressBar
 
+        // 로고 이미지에 테스트 모드 토글 리스너 추가
+        setupTestModeToggle(logoImage)
+
         fadeInViewsSequentially(logoImage, logoText, 1000L)
+    }
+
+    /**
+     * 테스트 모드 토글 설정 - 로고를 5번 연속 탭하면 토글
+     */
+    private fun setupTestModeToggle(logoView: View) {
+        logoView.setOnClickListener {
+            val currentTime = System.currentTimeMillis()
+
+            // 이전 탭에서 2초가 지났으면 카운트 리셋
+            if (currentTime - lastTapTime > TAP_TIMEOUT) {
+                logoTapCount = 0
+            }
+
+            logoTapCount++
+            lastTapTime = currentTime
+
+            Log.d("TestMode", "로고 탭 횟수: $logoTapCount/$REQUIRED_TAPS")
+
+            // 3번 탭부터 피드백 제공
+            if (logoTapCount >= 3) {
+                val remainingTaps = REQUIRED_TAPS - logoTapCount
+                if (remainingTaps > 0) {
+                    Toast.makeText(this, "테스트 모드까지 ${remainingTaps}번 더 탭하세요", Toast.LENGTH_SHORT)
+                        .show()
+                }
+            }
+
+            // 5번 탭하면 테스트 모드 토글
+            if (logoTapCount >= REQUIRED_TAPS) {
+                toggleTestMode()
+                logoTapCount = 0 // 카운트 리셋
+            }
+        }
+    }
+
+    /**
+     * 테스트 모드 토글
+     */
+    private fun toggleTestMode() {
+        val currentMode = CallGuardApplication.isTestModeEnabled()
+        val newMode = !currentMode
+
+        CallGuardApplication.setTestModeEnabled(newMode)
+
+        // 사용자에게 알림
+        val message = if (newMode) {
+            "🧪 테스트 모드가 활성화되었습니다!\n전화 수신 시 ${CallGuardApplication.getTestAudioFile()} 파일을 필사합니다."
+        } else {
+            "📱 일반 모드로 전환되었습니다.\n실제 통화 녹음을 진행합니다."
+        }
+
+        // AlertDialog로 상세한 안내 제공
+        AlertDialog.Builder(this)
+            .setTitle(if (newMode) "🧪 테스트 모드 활성화" else "📱 일반 모드 활성화")
+            .setMessage(message)
+            .setPositiveButton("확인") { dialog, _ ->
+                dialog.dismiss()
+                // 상태 텍스트 업데이트
+                updateStatusForTestMode(newMode)
+            }
+            .setCancelable(false)
+            .show()
+
+        // 진동 피드백 (권한이 있는 경우)
+        try {
+            @Suppress("DEPRECATION")
+            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as android.os.Vibrator
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(
+                    android.os.VibrationEffect.createOneShot(
+                        200,
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
+                    )
+                )
+            } else {
+                vibrator.vibrate(200)
+            }
+        } catch (e: Exception) {
+            Log.w("TestMode", "진동 피드백 실패", e)
+        }
+
+        Log.d("TestMode", "테스트 모드 토글 완료: $currentMode -> $newMode")
+    }
+
+    /**
+     * 테스트 모드에 따른 상태 텍스트 업데이트
+     */
+    private fun updateStatusForTestMode(isTestMode: Boolean) {
+        val currentText = statusTextView.text.toString()
+        val prefix = if (isTestMode) "🧪 [테스트] " else ""
+
+        // 이미 테스트 모드 prefix가 있으면 제거
+        val cleanText = currentText.removePrefix("🧪 [테스트] ")
+
+        statusTextView.text = "$prefix$cleanText"
     }
 
     private fun initView() {
@@ -149,14 +254,15 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun checkModelAndAuth() {
-        statusTextView.text = "모델 확인 중..."
+        val testModePrefix = if (CallGuardApplication.isTestModeEnabled()) "🧪 [테스트] " else ""
+        statusTextView.text = "${testModePrefix}모델 확인 중..."
 
         if (!checkModelExists()) {
             downloadModel()
         } else {
             progressBar.visibility = View.VISIBLE
             progressBar.setProgressPercentage(100.0)
-            statusTextView.text = "인증 확인 중..."
+            statusTextView.text = "${testModePrefix}인증 확인 중..."
 
             // 로그인 상태 확인
             checkAuthStatus()
@@ -166,26 +272,32 @@ class SplashActivity : AppCompatActivity() {
     private fun checkAuthStatus() {
         lifecycleScope.launch {
             try {
+                val testModePrefix =
+                    if (CallGuardApplication.isTestModeEnabled()) "🧪 [테스트] " else ""
+
                 // Repository를 통해 JWT 토큰 확인
                 val isLoggedIn = viewModel.checkLoginStatus()
 
                 if (isLoggedIn) {
-                    statusTextView.text = "로그인 확인됨"
+                    statusTextView.text = "${testModePrefix}로그인 확인됨"
                     // 권한 체크로 진행
                     proceedToPermissionCheck()
                 } else {
-                    statusTextView.text = "로그인 필요"
+                    statusTextView.text = "${testModePrefix}로그인 필요"
                     moveToLoginActivity()
                 }
             } catch (e: Exception) {
-                statusTextView.text = "로그인 필요"
+                val testModePrefix =
+                    if (CallGuardApplication.isTestModeEnabled()) "🧪 [테스트] " else ""
+                statusTextView.text = "${testModePrefix}로그인 필요"
                 moveToLoginActivity()
             }
         }
     }
 
     private fun proceedToPermissionCheck() {
-        statusTextView.text = "권한 확인 중..."
+        val testModePrefix = if (CallGuardApplication.isTestModeEnabled()) "🧪 [테스트] " else ""
+        statusTextView.text = "${testModePrefix}권한 확인 중..."
         dialogSetting()
 
         // 모든 권한이 이미 완료되었는지 체크
@@ -196,10 +308,16 @@ class SplashActivity : AppCompatActivity() {
         )
 
         if (hasOverlayPermission && hasAccessibilityPermission) {
-            statusTextView.text = "설정 완료"
+            statusTextView.text = "${testModePrefix}설정 완료"
 
-            // TODO: 여기에 메인 로직 또는 다음 단계 추가
-            Toast.makeText(this, "CallGuardAI 준비 완료! 🎉", Toast.LENGTH_LONG).show()
+            // 테스트 모드 상태를 포함한 완료 메시지
+            val completionMessage = if (CallGuardApplication.isTestModeEnabled()) {
+                "🧪 CallGuardAI 테스트 모드 준비 완료!\n전화 수신 시 테스트 파일을 필사합니다."
+            } else {
+                "CallGuardAI 준비 완료! 🎉"
+            }
+
+            Toast.makeText(this, completionMessage, Toast.LENGTH_LONG).show()
 
             // 예시: 3초 후 앱 종료 (실제로는 메인 기능으로 진행)
             lifecycleScope.launch {
@@ -527,21 +645,24 @@ class SplashActivity : AppCompatActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.progress.collect { pct ->
+                    val testModePrefix =
+                        if (CallGuardApplication.isTestModeEnabled()) "🧪 [테스트] " else ""
+
                     when {
                         pct == -2.0 -> {
                             // 아직 시작되지 않음 - 아무것도 표시하지 않음
                         }
 
                         pct == -1.0 -> {
-                            statusTextView.text = "다운로드 실패"
+                            statusTextView.text = "${testModePrefix}다운로드 실패"
                         }
                         pct < 100.0 -> {
                             progressBar.visibility = View.VISIBLE
                             progressBar.setProgressPercentage(pct)
-                            statusTextView.text = "다운로드 중: ${"%.1f".format(pct)}%"
+                            statusTextView.text = "${testModePrefix}다운로드 중: ${"%.1f".format(pct)}%"
                         }
                         else -> {
-                            statusTextView.text = "인증 확인 중..."
+                            statusTextView.text = "${testModePrefix}인증 확인 중..."
                             checkAuthStatus()
                         }
                     }

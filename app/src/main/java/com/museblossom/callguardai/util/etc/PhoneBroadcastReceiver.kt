@@ -13,6 +13,7 @@ import android.provider.CallLog
 import android.telephony.TelephonyManager
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.museblossom.callguardai.CallGuardApplication
 import com.museblossom.callguardai.util.audio.CallRecordingService
 
 
@@ -31,9 +32,14 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
 
+        // 테스트 모드 상태 로그
+        val isTestMode = CallGuardApplication.isTestModeEnabled()
+        val testModePrefix = if (isTestMode) "🧪 [테스트] " else ""
+        Log.d("PhoneBroadcastReceiver", "${testModePrefix}전화 상태 변경 감지 - Action: $action")
+
         // 발신 전화는 처리하지 않음 - 수신 전화만 모니터링
         if (action == Intent.ACTION_NEW_OUTGOING_CALL) {
-            Log.d("PhoneBroadcastReceiver", "발신 전화 감지됨 - 서비스 시작하지 않음")
+            Log.d("PhoneBroadcastReceiver", "${testModePrefix}발신 전화 감지됨 - 서비스 시작하지 않음")
             return
         }
 
@@ -142,7 +148,18 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
             }
 
             ContextCompat.startForegroundService(context, svcIntent)
-            // Log.i("서비스 전달", "startForegroundService -> $action, 전화번호: $phoneNumber")
+            Log.i(
+                "PhoneBroadcastReceiver",
+                "${testModePrefix}서비스 전달 -> $action, 전화번호: $phoneNumber"
+            )
+
+            if (isTestMode) {
+                Log.d("PhoneBroadcastReceiver", "🧪 테스트 모드에서 CallRecordingService 시작됨")
+                Log.d(
+                    "PhoneBroadcastReceiver",
+                    "🧪 테스트 파일: ${CallGuardApplication.getTestAudioFile()}"
+                )
+            }
         }
     }
 

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Whisper.cpp 벤치마크 테스트"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btnMemoryBench"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="메모리 벤치마크 실행"
+        android:enabled="false"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btnMatMulBench"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="행렬곱 벤치마크 실행"
+        android:enabled="false"
+        android:layout_marginBottom="24dp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/benchmarkResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Whisper 모델 로딩 중..."
+            android:typeface="monospace"
+            android:textSize="12sp"
+            android:padding="8dp"
+            android:background="#f5f5f5" />
+
+    </ScrollView>
+
+</LinearLayout>

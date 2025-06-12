@@ -85,6 +85,12 @@
             android:exported="false" />
         <activity android:name=".ui.activity.AlarmOffActivity" android:exported="false" />
 
+        <!-- 벤치마크 액티비티를 매니페스트에 등록하겠습니다 -->
+        <activity
+            android:name=".ui.benchmark.BenchmarkActivity"
+            android:exported="true"
+            android:label="Whisper 벤치마크" />
+
         <!-- 통화 녹음 서비스 -->
         <service
             android:name=".util.audio.CallRecordingService"

@@ -8,6 +8,21 @@ object WhisperCpuConfig {
     val preferredThreadCount: Int
         // Always use at least 2 threads:
         get() = CpuInfo.getHighPerfCpuCount().coerceAtLeast(2)
+
+    // 모든 코어 사용 (효율성 코어 포함) 옵션
+    val allCoresThreadCount: Int
+        get() = Runtime.getRuntime().availableProcessors()
+
+    // 커스텀 스레드 수 (테스트용)
+    fun getCustomThreadCount(useAllCores: Boolean = false): Int {
+        return if (useAllCores) {
+            Log.d("WhisperCpuConfig", "Using ALL cores: $allCoresThreadCount threads")
+            allCoresThreadCount
+        } else {
+            Log.d("WhisperCpuConfig", "Using HIGH-PERF cores only: $preferredThreadCount threads")
+            preferredThreadCount
+        }
+    }
 }
 
 private class CpuInfo(private val lines: List<String>) {

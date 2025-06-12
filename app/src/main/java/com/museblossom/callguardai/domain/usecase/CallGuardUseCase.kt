@@ -28,7 +28,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun downloadSTTModel(): Result<STTModelData> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "STT 모델 다운로드 요청")
             repository.downloadSTTModel()
         } catch (e: Exception) {
             Log.e(TAG, "STT 모델 다운로드 실패", e)
@@ -41,7 +40,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun loginWithGoogle(googleToken: String): Result<LoginData> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "구글 로그인 요청")
             repository.snsLogin(googleToken)
         } catch (e: Exception) {
             Log.e(TAG, "구글 로그인 실패", e)
@@ -54,7 +52,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun updateFCMToken(fcmToken: String): Result<Unit> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "FCM 토큰 서버 전송")
             repository.updatePushToken(fcmToken)
         } catch (e: Exception) {
             Log.e(TAG, "FCM 토큰 전송 실패", e)
@@ -67,7 +64,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun getCDNUrl(): Result<CDNUrlData> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "CDN URL 요청 (통화 UUID 획득)")
             repository.getCDNUrl()
         } catch (e: Exception) {
             Log.e(TAG, "CDN URL 요청 실패", e)
@@ -80,8 +76,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun uploadAudioForAnalysis(audioFile: File): Result<String> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "오디오 파일 업로드 및 분석 요청: ${audioFile.name}")
-
             // 1. CDN URL 요청
             val cdnResult = repository.getCDNUrl()
             if (cdnResult.isFailure) {
@@ -91,7 +85,6 @@ class CallGuardUseCase @Inject constructor(
             }
 
             val cdnData = cdnResult.getOrNull()!!
-            Log.d(TAG, "CDN URL 획득 성공: ${cdnData.uuid}")
 
             // 2. CDN에 파일 업로드
             val uploadResult = repository.uploadAudioToCDN(cdnData.uploadPath, audioFile)
@@ -100,8 +93,6 @@ class CallGuardUseCase @Inject constructor(
                     uploadResult.exceptionOrNull() ?: Exception("파일 업로드 실패")
                 )
             }
-
-            Log.d(TAG, "오디오 파일 업로드 완료")
 
             // UUID 반환 (딥보이스 분석 결과는 FCM으로 수신)
             Result.success(cdnData.uuid)
@@ -118,7 +109,6 @@ class CallGuardUseCase @Inject constructor(
     suspend fun sendVoicePhishingText(uuid: String, callText: String): Result<Unit> =
         withContext(dispatcher) {
             try {
-                Log.d(TAG, "보이스피싱 텍스트 전송: $callText")
                 repository.sendVoiceText(uuid, callText)
             } catch (e: Exception) {
                 Log.e(TAG, "보이스피싱 텍스트 전송 실패", e)
@@ -143,7 +133,6 @@ class CallGuardUseCase @Inject constructor(
      */
     suspend fun logout(): Result<Unit> = withContext(dispatcher) {
         try {
-            Log.d(TAG, "로그아웃 요청")
             repository.clearAuthToken()
             Result.success(Unit)
         } catch (e: Exception) {
