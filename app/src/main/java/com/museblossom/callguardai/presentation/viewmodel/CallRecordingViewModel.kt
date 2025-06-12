@@ -4,8 +4,11 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.museblossom.callguardai.R
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
+import com.museblossom.callguardai.util.audio.CallRecordingService
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
 import android.util.Log
@@ -74,8 +77,16 @@ class CallRecordingViewModel @Inject constructor(
     private val _toastMessage = MutableLiveData<String?>()
     val toastMessage: LiveData<String?> = _toastMessage
 
+    // === UI 데이터 LiveData 추가 ===
+    private val _deepVoiceUiData = MutableLiveData<DeepVoiceUiData?>()
+    val deepVoiceUiData: LiveData<DeepVoiceUiData?> = _deepVoiceUiData
+
+    private val _phishingUiData = MutableLiveData<PhishingUiData?>()
+    val phishingUiData: LiveData<PhishingUiData?> = _phishingUiData
+
     init {
         initializeState()
+        subscribeToServiceStateFlow()
     }
 
     private fun initializeState() {
@@ -89,6 +100,43 @@ class CallRecordingViewModel @Inject constructor(
         _overlayUiState.value = OverlayUiState.NORMAL
         _shouldVibrate.value = false
         _hasInitialAnalysisCompleted.value = false
+    }
+
+    private fun subscribeToServiceStateFlow() {
+        viewModelScope.launch {
+            // 서비스가 시작될 때까지 대기
+            while (CallRecordingService.getStateFlow() == null) {
+                kotlinx.coroutines.delay(100)
+            }
+
+            CallRecordingService.getStateFlow()?.collect { serviceState ->
+                Log.d(TAG, "Service state updated: $serviceState")
+
+                // Service 상태를 ViewModel 상태에 동기화
+                _isCallActive.value = serviceState.isCallActive
+                _isRecording.value = serviceState.isRecording
+                _callDuration.value = serviceState.callDuration
+                _isPhishingDetected.value = serviceState.isPhishingDetected
+                _isDeepVoiceDetected.value = serviceState.isDeepVoiceDetected
+
+                // UI 상태 업데이트
+                updateOverlayVisibility()
+                checkAndHideOverlay()
+            }
+        }
+    }
+
+    private fun updateOverlayVisibility() {
+        val shouldShow = _isCallActive.value == true
+        _shouldShowOverlay.value = shouldShow
+
+        if (shouldShow) {
+            _overlayUiState.value = when {
+                _isPhishingDetected.value == true -> OverlayUiState.HIGH_RISK
+                _isDeepVoiceDetected.value == true -> OverlayUiState.WARNING
+                else -> OverlayUiState.NORMAL
+            }
+        }
     }
 
     /**
@@ -157,6 +205,7 @@ class CallRecordingViewModel @Inject constructor(
                     Log.d(TAG, "딥보이스 감지됨 (확률: $probability%)")
                     _shouldVibrate.value = true
                     updateOverlayState(analysisResult)
+                    updateDeepVoiceUiData(analysisResult)
                 } else {
                     Log.d(TAG, "딥보이스 미감지 (확률: $probability%)")
                 }
@@ -186,6 +235,7 @@ class CallRecordingViewModel @Inject constructor(
                     Log.d(TAG, "피싱 감지됨: $text")
                     _shouldVibrate.value = true
                     updateOverlayState(analysisResult)
+                    updatePhishingUiData(analysisResult)
                 } else {
                     Log.d(TAG, "피싱 미감지: $text")
                 }
@@ -214,6 +264,7 @@ class CallRecordingViewModel @Inject constructor(
                         if (isDetected) {
                             _shouldVibrate.value = true
                             updateOverlayState(analysisResult)
+                            updateDeepVoiceUiData(analysisResult)
                         }
                         checkAndHideOverlay()
                     },
@@ -288,6 +339,44 @@ class CallRecordingViewModel @Inject constructor(
             AnalysisResult.RiskLevel.LOW -> OverlayUiState.CAUTION
             AnalysisResult.RiskLevel.SAFE -> OverlayUiState.SAFE
         }
+    }
+
+    /**
+     * 딥보이스 UI 데이터 업데이트
+     */
+    private fun updateDeepVoiceUiData(analysisResult: AnalysisResult) {
+        val riskLevel = analysisResult.riskLevel
+        val colorCode = when (riskLevel) {
+            AnalysisResult.RiskLevel.HIGH -> "#FF4444"
+            AnalysisResult.RiskLevel.MEDIUM -> "#FFA500"
+            AnalysisResult.RiskLevel.LOW -> "#FFD700"
+            AnalysisResult.RiskLevel.SAFE -> "#90EE90"
+        }
+
+        _deepVoiceUiData.value = DeepVoiceUiData(
+            probability = analysisResult.probability,
+            colorCode = colorCode,
+            riskLevel = riskLevel
+        )
+    }
+
+    /**
+     * 피싱 UI 데이터 업데이트
+     */
+    private fun updatePhishingUiData(analysisResult: AnalysisResult) {
+        val riskLevel = analysisResult.riskLevel
+        val message = when (riskLevel) {
+            AnalysisResult.RiskLevel.HIGH -> "높은 위험: 피싱 시도 감지됨"
+            AnalysisResult.RiskLevel.MEDIUM -> "주의: 의심스러운 활동 감지됨"
+            else -> "피싱 감지됨"
+        }
+
+        _phishingUiData.value = PhishingUiData(
+            isDetected = true,
+            message = message,
+            iconRes = R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24,
+            riskLevel = riskLevel
+        )
     }
 
     /**
@@ -368,11 +457,34 @@ class CallRecordingViewModel @Inject constructor(
     /**
      * 오버레이 UI 상태
      */
-    enum class OverlayUiState {
-        NORMAL,      // 정상 상태
-        SAFE,        // 안전
-        CAUTION,     // 주의
-        WARNING,     // 경고
-        HIGH_RISK    // 높은 위험
+    sealed class OverlayUiState {
+        object NORMAL : OverlayUiState()      // 정상 상태
+        object SAFE : OverlayUiState()        // 안전
+        object CAUTION : OverlayUiState()     // 주의
+        object WARNING : OverlayUiState()     // 경고
+        object HIGH_RISK : OverlayUiState()   // 높은 위험
+
+        // 분석 결과를 포함하는 상태들
+        data class DeepVoiceDetected(val result: AnalysisResult) : OverlayUiState()
+        data class PhishingDetected(val result: AnalysisResult) : OverlayUiState()
     }
+
+    /**
+     * 딥보이스 UI 업데이트 데이터
+     */
+    data class DeepVoiceUiData(
+        val probability: Int,
+        val colorCode: String,
+        val riskLevel: AnalysisResult.RiskLevel
+    )
+
+    /**
+     * 피싱 UI 업데이트 데이터
+     */
+    data class PhishingUiData(
+        val isDetected: Boolean,
+        val message: String,
+        val iconRes: Int,
+        val riskLevel: AnalysisResult.RiskLevel
+    )
 }

@@ -18,8 +18,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
-import com.museblossom.callguardai.R
 import com.museblossom.callguardai.CallGuardApplication
+import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.CallFloatingBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
@@ -41,12 +41,12 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withContext
 import java.util.*
 import java.io.File
-import java.io.InputStream
 import javax.inject.Inject
 
 /**
@@ -74,7 +74,7 @@ class CallRecordingService : Service() {
     private var isIncomingCall = false
     private var isOnlyWhisper = false
 
-    // 상태 관리
+    // 상태 관리 - ViewModel로 이동 예정, 현재는 브리지 용도
     private var isCallActive = false
     private var isRecording = false
     private var callDuration = 0
@@ -111,13 +111,19 @@ class CallRecordingService : Service() {
     private val pendingServerOperations = mutableMapOf<String, CompletableDeferred<Unit>>()
     private val operationsLock = Any()
 
+    // 상태 플로우 - Service -> ViewModel 통신
+    private val _uiState = MutableStateFlow(CallRecordingState())
+    val uiState: StateFlow<CallRecordingState> = _uiState
+
+    // 이벤트 플로우 - ViewModel -> Service 통신
+    private val eventFlow = MutableSharedFlow<CallRecordingEvent>()
+
     companion object {
         const val EXTRA_PHONE_INTENT = "EXTRA_PHONE_INTENT"
         const val OUTGOING_CALLS_RECORDING_PREPARATION_DELAY_IN_MS = 5000L
         const val ACTION_TRANSCRIBE_FILE = "ACTION_TRANSCRIBE_FILE"
         const val EXTRA_FILE_PATH = "EXTRA_FILE_PATH"
-        private const val MAX_NO_DETECTION_COUNT = 4
-        private const val OVERLAP_SEGMENT_DURATION = 15 // 15초
+        private const val OVERLAP_SEGMENT_DURATION = 20 // 20초로 변경
 
         // 오버레이 상태 추적을 위한 정적 변수
         @Volatile
@@ -142,16 +148,54 @@ class CallRecordingService : Service() {
         fun isServiceRunning(): Boolean {
             return serviceInstance != null
         }
+
+        /**
+         * 서비스 상태 플로우에 접근
+         */
+        fun getStateFlow(): StateFlow<CallRecordingState>? {
+            return serviceInstance?.uiState
+        }
     }
 
     override fun onCreate() {
         super.onCreate()
         serviceInstance = this
 
+        // ViewModel 주입 제거 - 대신 UseCase 직접 사용
         initializeWhisperModel()
         initializeRecorder()
         initializeWindowManager()
         setNotification()
+
+        // 상태 변경 감지
+        serviceScope.launch {
+            uiState.collect { state ->
+                // UI 상태를 기반으로 필요한 작업 수행
+            }
+        }
+
+        // 이벤트 처리
+        serviceScope.launch {
+            eventFlow.collect { event ->
+                when (event) {
+                    is CallRecordingEvent.RequestStop -> {
+                        stopRecording()
+                    }
+
+                    is CallRecordingEvent.RequestStart -> {
+                        startRecording()
+                    }
+
+                    is CallRecordingEvent.UpdatePhishing -> {
+                        isPhishingDetected = event.detected
+                    }
+
+                    is CallRecordingEvent.UpdateDeepVoice -> {
+                        isDeepVoiceDetected = event.detected
+                    }
+                }
+            }
+        }
     }
 
     private fun initializeWhisperModel() {
@@ -206,9 +250,20 @@ class CallRecordingService : Service() {
         recorder = Recorder(
             context = this,
             callback = { elapsedSeconds ->
-                callDuration = elapsedSeconds
-                // 15초마다 세그먼트 파일 처리
-                if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
+                // ViewModel에 통화 시간 업데이트
+                updateCallDuration(elapsedSeconds)
+
+                // 5초마다 통화 시간 로그 출력
+                if (elapsedSeconds % 5 == 0) {
+                    Log.i(
+                        TAG,
+                        "📞 통화 진행 중 - 경과시간: ${elapsedSeconds}초 (${formatTime(elapsedSeconds)}) | 녹음상태: ${if (isRecording) "녹음중" else "대기중"}"
+                    )
+                }
+
+                // 20초마다 세그먼트 파일 처리 (15초 → 20초로 변경)
+                if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
+                    Log.d(TAG, "🎙️ 20초 세그먼트 처리 - 녹음 재시작 (경과시간: ${elapsedSeconds}초)")
                     serviceScope.launch {
                         // 분석을 위해 현재 녹음 중지하고 재시작
                         withContext(Dispatchers.Main) {
@@ -437,60 +492,21 @@ class CallRecordingService : Service() {
         }
     }
 
-    private fun updateDeepVoiceUI(result: AnalysisResult) {
-        bindingNormal ?: return
-
-        // 확률 텍스트 애니메이션 설정
-        bindingNormal!!.deepVoicePercentTextView1.animationDuration = 1000L
-        bindingNormal!!.deepVoicePercentTextView1.charStrategy =
-            Strategy.SameDirectionAnimation(Direction.SCROLL_DOWN)
-        bindingNormal!!.deepVoicePercentTextView1.addCharOrder(CharOrder.Number)
-        bindingNormal!!.deepVoicePercentTextView1.setTextSize(18f)
-
-        // 위험도에 따른 색상 및 배경 설정
-        val colorCode = result.getColorCode()
-        bindingNormal!!.deepVoicePercentTextView1.textColor = Color.parseColor(colorCode)
-        bindingNormal!!.deepVoicePercentTextView1.setText("${result.probability}%")
-
-        bindingNormal!!.deepVoiceTextView1.textSize = 12f
-        bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
-
-        // 배경 변경
-        when (result.riskLevel) {
-            AnalysisResult.RiskLevel.HIGH, AnalysisResult.RiskLevel.MEDIUM ->
-                changeWarningBackground(bindingNormal!!.deepVoiceWidget)
-
-            AnalysisResult.RiskLevel.LOW ->
-                changeCautionBackground(bindingNormal!!.deepVoiceWidget)
-
-            AnalysisResult.RiskLevel.SAFE ->
-                changeSuccessBackground(bindingNormal!!.deepVoiceWidget)
-        }
-    }
-
-    private fun updatePhishingUI(result: AnalysisResult) {
-        bindingNormal ?: return
-
-        when (result.riskLevel) {
-            AnalysisResult.RiskLevel.HIGH -> {
-                bindingNormal!!.phisingTextView.textSize = 12f
-                bindingNormal!!.phisingTextView.text = "피싱 감지 주의요망"
-                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24)
-                changeWarningBackground(bindingNormal!!.phisingWidget)
-            }
-
-            else -> {
-                bindingNormal!!.phisingTextView.text = "피싱 미감지"
-                bindingNormal!!.phsingImageView1.setImageResource(R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24)
-                changeSuccessBackground(bindingNormal!!.phisingWidget)
-            }
-        }
-    }
-
     private fun removeOverlayView() {
         if (overlayNormalView != null) {
             try {
-                windowManager.removeView(overlayNormalView)
+                // 메인 스레드에서 실행 확인
+                if (Looper.myLooper() == Looper.getMainLooper()) {
+                    windowManager.removeView(overlayNormalView)
+                } else {
+                    Handler(Looper.getMainLooper()).post {
+                        try {
+                            windowManager.removeView(overlayNormalView)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "메인 스레드에서 오버레이 뷰 제거 실패: ${e.message}")
+                        }
+                    }
+                }
                 isOverlayCurrentlyVisible = false
             } catch (e: Exception) {
                 Log.e(TAG, "오버레이 뷰 제거 실패: ${e.message}")
@@ -549,6 +565,9 @@ class CallRecordingService : Service() {
 
                 recorder.startRecording(delay, isOnlyWhisper ?: false)
                 isRecording = true
+
+                // ViewModel에 녹음 상태 업데이트
+                updateRecordingStatus(true)
             } catch (e: Exception) {
                 Log.e(TAG, "녹음 시작 실패: ${e.message}", e)
             }
@@ -560,10 +579,38 @@ class CallRecordingService : Service() {
             try {
                 recorder.stopRecording(isIsOnlyWhisper = isOnlyWhisper ?: false)
                 isRecording = false
+
+                // ViewModel에 녹음 상태 업데이트
+                updateRecordingStatus(false)
             } catch (e: Exception) {
                 Log.e(TAG, "녹음 중지 실패: ${e.message}", e)
             }
         }
+    }
+
+    private fun updateCallDuration(elapsedSeconds: Int) {
+        callDuration = elapsedSeconds
+        _uiState.value = _uiState.value.copy(callDuration = elapsedSeconds)
+    }
+
+    private fun updateRecordingStatus(isRecording: Boolean) {
+        this.isRecording = isRecording
+        _uiState.value = _uiState.value.copy(isRecording = isRecording)
+    }
+
+    private fun updateCallStatus(isActive: Boolean) {
+        isCallActive = isActive
+        _uiState.value = _uiState.value.copy(isCallActive = isActive)
+    }
+
+    private fun updatePhishingStatus(detected: Boolean) {
+        isPhishingDetected = detected
+        _uiState.value = _uiState.value.copy(isPhishingDetected = detected)
+    }
+
+    private fun updateDeepVoiceStatus(detected: Boolean) {
+        isDeepVoiceDetected = detected
+        _uiState.value = _uiState.value.copy(isDeepVoiceDetected = detected)
     }
 
     private fun setRecordListener() {
@@ -573,6 +620,12 @@ class CallRecordingService : Service() {
             }
 
             override fun onWaveFileReady(file: File, fileSize: Long, isValid: Boolean) {
+                // 서비스 스코프가 완전히 취소된 경우에만 처리 중단
+                if (!serviceScope.isActive) {
+                    Log.d(TAG, "서비스 스코프 비활성 - WAV 파일 처리 건너뜀")
+                    return
+                }
+
                 if (!isValid) {
                     Log.e(TAG, "유효하지 않은 파일로 처리 중단")
                     return
@@ -586,6 +639,8 @@ class CallRecordingService : Service() {
                 if (file.length() != fileSize) {
                     Log.w(TAG, "파일 크기 불일치 - 예상: $fileSize, 실제: ${file.length()}")
                 }
+
+                Log.d(TAG, "마지막 WAV 파일 처리 시작: ${file.name}")
 
                 serviceScope.launch {
                     try {
@@ -618,7 +673,11 @@ class CallRecordingService : Service() {
             val elapsed = System.currentTimeMillis() - start
 
             withContext(Dispatchers.Main) {
-                Log.i(TAG, "Whisper 전사 완료 (${elapsed}ms): '$result'")
+                val isLastProcessing = !isCallActive
+                Log.i(
+                    TAG,
+                    "Whisper 전사 완료 (${elapsed}ms)${if (isLastProcessing) " [마지막 처리]" else ""}: '$result'"
+                )
 
                 if (result.isNotBlank() && result != "WhisperContext 미초기화") {
                     startKoBertProcessing(result)
@@ -636,6 +695,7 @@ class CallRecordingService : Service() {
     private fun startKoBertProcessing(result: String) {
         val operationId = "kobert_${System.currentTimeMillis()}"
         val operationComplete = CompletableDeferred<Unit>()
+        val isLastProcessing = !isCallActive
 
         synchronized(operationsLock) {
             pendingServerOperations[operationId] = operationComplete
@@ -648,7 +708,10 @@ class CallRecordingService : Service() {
                     currentCallUuid?.let { uuid ->
                         try {
                             callGuardUseCase.sendVoicePhishingText(uuid, result)
-                            Log.i(TAG, "서버 전송 완료: UUID=$uuid")
+                            Log.i(
+                                TAG,
+                                "서버 전송 완료${if (isLastProcessing) " [마지막]" else ""}: UUID=$uuid"
+                            )
                         } catch (e: Exception) {
                             Log.e(TAG, "서버 전송 실패", e)
                         }
@@ -663,7 +726,8 @@ class CallRecordingService : Service() {
                     withContext(Dispatchers.Main) {
                         handlePhishingAnalysis(result, isPhishing)
 
-                        if (!isPhishing) {
+                        // 마지막 처리가 아닌 경우에만 녹음 재시작
+                        if (!isPhishing && !isLastProcessing) {
                             isOnlyWhisper = true
                             startRecording(isOnlyWhisper)
                         }
@@ -680,9 +744,9 @@ class CallRecordingService : Service() {
 
     private fun handleDeepVoiceAnalysis(probability: Int) {
         try {
-            val analysisResult = createDeepVoiceAnalysisResult(probability)
+            // 딥보이스 분석 처리
             val isDetected = probability >= 50
-            isDeepVoiceDetected = isDetected
+            updateDeepVoiceStatus(isDetected)
             hasInitialAnalysisCompleted = true
 
             if (isDetected) {
@@ -690,10 +754,10 @@ class CallRecordingService : Service() {
                 if (recorder.getVibrate()) {
                     recorder.vibrateWithPattern(applicationContext)
                 }
-                updateDeepVoiceUI(analysisResult)
+                handleDeepVoice(probability)
             }
 
-            // 딥보이스 분석 결과 데이터베이스 저장
+            // 데이터베이스 저장
             currentCallUuid?.let { uuid ->
                 serviceScope.launch {
                     callRecordRepository.updateDeepVoiceResult(uuid, isDetected, probability)
@@ -708,8 +772,8 @@ class CallRecordingService : Service() {
 
     private fun handlePhishingAnalysis(text: String, isPhishing: Boolean) {
         try {
-            val analysisResult = createPhishingAnalysisResult(isPhishing)
-            isPhishingDetected = isPhishing
+            // 피싱 분석 처리
+            updatePhishingStatus(isPhishing)
             hasInitialAnalysisCompleted = true
 
             val probability = if (isPhishing) 90 else 10
@@ -719,10 +783,10 @@ class CallRecordingService : Service() {
                 if (recorder.getVibrate()) {
                     recorder.vibrateWithPattern(applicationContext)
                 }
-                updatePhishingUI(analysisResult)
+                handlePhishing(text, isPhishing)
             }
 
-            // 보이스피싱 분석 결과 데이터베이스 저장
+            // 데이터베이스 저장
             currentCallUuid?.let { uuid ->
                 serviceScope.launch {
                     callRecordRepository.updateVoicePhishingResult(uuid, isPhishing, probability)
@@ -735,43 +799,35 @@ class CallRecordingService : Service() {
         }
     }
 
-    private fun createDeepVoiceAnalysisResult(probability: Int): AnalysisResult {
-        val riskLevel = when {
-            probability >= 80 -> AnalysisResult.RiskLevel.HIGH
-            probability >= 60 -> AnalysisResult.RiskLevel.MEDIUM
-            probability >= 30 -> AnalysisResult.RiskLevel.LOW
-            else -> AnalysisResult.RiskLevel.SAFE
+    private fun handleDeepVoice(probability: Int) {
+        // 딥보이스 감지 상태
+        if (bindingNormal == null) return
+
+        bindingNormal!!.deepVoicePercentTextView1.setText("${probability}%")
+        bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
+
+        // 배경색 변경
+        when {
+            probability >= 70 -> changeWarningBackground(bindingNormal!!.deepVoiceWidget)
+            probability >= 40 -> changeCautionBackground(bindingNormal!!.deepVoiceWidget)
+            else -> changeSuccessBackground(bindingNormal!!.deepVoiceWidget)
         }
-
-        return AnalysisResult(
-            type = AnalysisResult.Type.DEEP_VOICE,
-            probability = probability,
-            riskLevel = riskLevel,
-            recommendation = getRecommendation(riskLevel),
-            timestamp = System.currentTimeMillis()
-        )
     }
 
-    private fun createPhishingAnalysisResult(isPhishing: Boolean): AnalysisResult {
-        val probability = if (isPhishing) 90 else 10
-        val riskLevel =
-            if (isPhishing) AnalysisResult.RiskLevel.HIGH else AnalysisResult.RiskLevel.SAFE
+    private fun handlePhishing(text: String, isPhishing: Boolean) {
+        // 피싱 감지 상태
+        if (bindingNormal == null) return
 
-        return AnalysisResult(
-            type = AnalysisResult.Type.PHISHING,
-            probability = probability,
-            riskLevel = riskLevel,
-            recommendation = getRecommendation(riskLevel),
-            timestamp = System.currentTimeMillis()
+        bindingNormal!!.phisingTextView.text = if (isPhishing) "피싱 감지됨" else "정상"
+        bindingNormal!!.phsingImageView1.setImageResource(
+            if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24
         )
-    }
 
-    private fun getRecommendation(riskLevel: AnalysisResult.RiskLevel): String {
-        return when (riskLevel) {
-            AnalysisResult.RiskLevel.HIGH -> "즉시 통화를 종료하세요!"
-            AnalysisResult.RiskLevel.MEDIUM -> "주의가 필요합니다. 통화 내용을 신중히 판단하세요."
-            AnalysisResult.RiskLevel.LOW -> "주의하여 통화를 진행하세요."
-            AnalysisResult.RiskLevel.SAFE -> "안전한 통화로 판단됩니다."
+        // 배경색 변경
+        if (isPhishing) {
+            changeWarningBackground(bindingNormal!!.phisingWidget)
+        } else {
+            changeSuccessBackground(bindingNormal!!.phisingWidget)
         }
     }
 
@@ -792,7 +848,7 @@ class CallRecordingService : Service() {
             noDetectionCount++
 
             // 통화 시작 직후에는 오버레이를 숨기지 않음
-            if (noDetectionCount >= MAX_NO_DETECTION_COUNT && !isRecording && noDetectionCount > 0) {
+            if (noDetectionCount >= 4 && !isRecording && noDetectionCount > 0) {
                 shouldShowOverlay = false
                 removeOverlayView()
             }
@@ -828,22 +884,12 @@ class CallRecordingService : Service() {
         isOverlayCurrentlyVisible = false
         serviceInstance = null
 
-        // 진행 중인 작업이 있는 경우 완료를 기다림
-        if (serviceScope.isActive) {
-            try {
-                // 현재 진행 중인 작업들을 잠시 완료 대기
-                Thread.sleep(500)
-            } catch (e: InterruptedException) {
-                Log.w(TAG, "대기 중 인터럽트됨")
-            }
-        }
-
-        // Whisper 리소스 해제를 위한 별도 스코프 생성 (기존 스코프와 독립적)
+        // WhisperContext 해제를 위한 별도 스코프 생성
         val cleanupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
         cleanupScope.launch {
             try {
                 whisperContext?.release()
-                Log.i(TAG, "WhisperContext 해제 완료")
+                Log.d(TAG, "WhisperContext 해제 완료")
             } catch (e: Exception) {
                 Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
             } finally {
@@ -852,25 +898,28 @@ class CallRecordingService : Service() {
             }
         }
 
-        // 기존 서비스 스코프 취소 (마지막에 실행)
-        try {
-            serviceScope.cancel()
-        } catch (e: Exception) {
-            Log.w(TAG, "서비스 스코프 취소 중 오류: ${e.message}")
-        }
+        // 기존 서비스 스코프 취소
+        serviceScope.cancel()
 
-        Log.i(TAG, "통화녹음 서비스 종료 완료")
+        Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
     }
 
     private fun startCall() {
         callStartTime = System.currentTimeMillis()
 
-        // 테스트 모드 확인
-        if (CallGuardApplication.isTestModeEnabled()) {
-            Log.i(TAG, "테스트 모드 활성화")
-            handleTestMode()
-            return
-        }
+        Log.i(
+            TAG,
+            "📞 통화 시작 - 시간: ${
+                java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    java.util.Locale.getDefault()
+                ).format(callStartTime)
+            }"
+        )
+        Log.i(TAG, "📞 전화번호: $currentPhoneNumber")
+
+        // ViewModel에 통화 시작 알림
+        startCallInternal()
 
         // CDN URL API를 호출하여 UUID 받아오기
         serviceScope.launch {
@@ -910,193 +959,55 @@ class CallRecordingService : Service() {
         noDetectionCount = 0
         shouldShowOverlay = true
         hasInitialAnalysisCompleted = false
+
+        // StateFlow 업데이트
+        _uiState.value = CallRecordingState(
+            isCallActive = true,
+            isRecording = true,
+            callDuration = 0,
+            isPhishingDetected = false,
+            isDeepVoiceDetected = false
+        )
+
         setupOverlayView()
         startRecording(isOnlyWhisper = false)
     }
 
-    /**
-     * 테스트 모드 처리 - assets의 테스트 오디오 파일을 필사
-     */
-    private fun handleTestMode() {
-        Log.d(TAG, "🧪 테스트 모드 처리 시작")
-
-        // UI 설정 (일반 통화와 동일)
+    private fun startCallInternal() {
+        // 실제 통화 시작 로직
         isCallActive = true
-        isRecording = false // 실제 녹음은 하지 않음
-        isPhishingDetected = false
-        isDeepVoiceDetected = false
-        noDetectionCount = 0
-        shouldShowOverlay = true
-        hasInitialAnalysisCompleted = false
-        currentCallUuid = "TEST_" + UUID.randomUUID().toString()
-
-        setupOverlayView()
-
-        // 테스트 오디오 파일 처리
-        serviceScope.launch {
-            try {
-                val testAudioFile = CallGuardApplication.getTestAudioFile()
-                Log.d(TAG, "🧪 테스트 오디오 파일: $testAudioFile")
-
-                // assets에서 파일 읽기
-                val inputStream: InputStream = assets.open(testAudioFile)
-                val tempFile = File(cacheDir, "test_audio_temp.mp3")
-
-                // assets 파일을 임시 파일로 복사
-                inputStream.use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-
-                Log.d(TAG, "🧪 테스트 파일 임시 복사 완료: ${tempFile.absolutePath}")
-                Log.d(TAG, "🧪 임시 파일 크기: ${tempFile.length()} bytes")
-
-                // 직접 처리 (변환 없이)
-                processTestAudioDirectly(tempFile)
-
-            } catch (e: Exception) {
-                Log.e(TAG, "🧪 테스트 모드 오디오 처리 중 오류", e)
-                // 테스트 모드에서 오류 발생 시 일반 모드로 전환
-                Log.w(TAG, "🧪 테스트 모드 실패 - 일반 모드로 진행")
-                handleNormalModeAfterTestFailure()
-            }
-        }
-    }
-
-    /**
-     * 테스트 오디오 파일을 직접 처리 (변환 없이)
-     */
-    private suspend fun processTestAudioDirectly(audioFile: File) {
-        withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "🧪 테스트 파일 직접 처리 시작: ${audioFile.absolutePath}")
-
-                // 잠시 대기 (실제 통화처럼 보이게 하기 위해)
-                delay(2000)
-
-                // 테스트 모드에서 딥페이크 분석 시뮬레이션
-                simulateDeepVoiceAnalysis()
-
-                // MP3를 WAV로 변환 (Whisper 필사를 위해 필요)
-                val wavFile = File(cacheDir, "test_audio_for_whisper.wav")
-                val conversionSuccess = convertMp3ToWavForWhisper(audioFile, wavFile)
-
-                if (conversionSuccess && wavFile.exists()) {
-                    // WAV 파일 디코딩
-                    val audioData = decodeWaveFile(wavFile)
-                    Log.d(TAG, "🧪 WAV 파일 디코딩 완료 - 데이터 크기: ${audioData.size}")
-
-                    // Whisper로 필사
-                    transcribeWithWhisper(audioData)
-
-                    // 임시 파일 정리
-                    wavFile.delete()
-                } else {
-                    Log.e(TAG, "🧪 테스트 파일 WAV 변환 실패")
-                }
-
-                // 원본 임시 파일 정리
-                audioFile.delete()
-                Log.d(TAG, "🧪 임시 파일 정리 완료")
-
-            } catch (e: Exception) {
-                Log.e(TAG, "🧪 테스트 오디오 직접 처리 중 오류", e)
-            }
-        }
-    }
-
-    /**
-     * 테스트용 MP3를 Whisper용 WAV로 변환 (최소한의 변환)
-     */
-    private fun convertMp3ToWavForWhisper(inputMp3: File, outputWav: File): Boolean {
-        return try {
-            Log.d(TAG, "🧪 테스트용 MP3 -> WAV 변환 시작")
-
-            // Whisper 권장 포맷으로 변환: 16kHz, 모노
-            val command =
-                "-i \"${inputMp3.absolutePath}\" -ar 16000 -ac 1 -f wav \"${outputWav.absolutePath}\""
-
-            Log.d(TAG, "🧪 FFmpeg 명령어: $command")
-
-            // FFmpegKit 실행
-            val session = com.arthenica.ffmpegkit.FFmpegKit.execute(command)
-            val returnCode = session.returnCode
-
-            if (com.arthenica.ffmpegkit.ReturnCode.isSuccess(returnCode)) {
-                Log.d(TAG, "🧪 테스트용 WAV 변환 성공")
-                Log.d(TAG, "🧪 출력 파일 크기: ${outputWav.length()} bytes")
-                true
-            } else {
-                Log.e(TAG, "🧪 테스트용 WAV 변환 실패 - ReturnCode: $returnCode")
-                session.logs.forEach { log ->
-                    Log.e(TAG, "🧪 FFmpeg: ${log.message}")
-                }
-                false
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "🧪 테스트용 WAV 변환 중 예외 발생", e)
-            false
-        }
-    }
-
-    /**
-     * 테스트 모드에서 딥페이크 분석 시뮬레이션
-     */
-    private fun simulateDeepVoiceAnalysis() {
-        Log.d(TAG, "🧪 딥페이크 분석 시뮬레이션 시작")
-
-        // 테스트용 확률 생성 (실제 사용 시에는 고정값으로 변경 가능)
-        val testProbabilities = listOf(85, 75, 92, 68, 73, 89) // 다양한 테스트 시나리오
-        val randomProbability = testProbabilities.random()
-
-        Log.d(TAG, "🧪 시뮬레이션된 딥페이크 확률: $randomProbability%")
-
-        // 메인 스레드에서 UI 업데이트
-        serviceScope.launch(Dispatchers.Main) {
-            handleDeepVoiceAnalysis(randomProbability)
-        }
-    }
-
-    /**
-     * 테스트 모드 실패 시 일반 모드로 전환
-     */
-    private fun handleNormalModeAfterTestFailure() {
-        Log.d(TAG, "🧪 테스트 모드에서 일반 모드로 전환")
-
-        // 일반 통화 시작 로직 실행
-        serviceScope.launch {
-            try {
-                currentCallUuid = UUID.randomUUID().toString()
-
-                // 통화 기록 저장
-                currentPhoneNumber?.let { phoneNumber ->
-                    val callRecord = com.museblossom.callguardai.data.model.CallRecord(
-                        uuid = currentCallUuid!!,
-                        phoneNumber = phoneNumber,
-                        callStartTime = callStartTime
-                    )
-                    callRecordRepository.saveCallRecord(callRecord)
-                    Log.d(TAG, "통화 기록 저장됨 (테스트 실패 후): UUID=${currentCallUuid}, 번호=$phoneNumber")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "일반 모드 전환 중 오류", e)
-            }
-        }
-
-        // 실제 녹음 시작
-        isRecording = true
-        startRecording(isOnlyWhisper = false)
+        _uiState.value = _uiState.value.copy(isCallActive = true)
     }
 
     private fun endCall() {
-        Log.d(TAG, "통화 종료 시작")
+        val callEndTime = System.currentTimeMillis()
+        val totalCallDuration = (callEndTime - callStartTime) / 1000 // 초 단위
 
-        // 테스트 모드인 경우 로그 출력
-        if (CallGuardApplication.isTestModeEnabled() && currentCallUuid?.startsWith("TEST_") == true) {
-            Log.d(TAG, "🧪 테스트 모드 통화 종료")
+        Log.i(TAG, "📞 통화 종료 시작")
+        Log.i(
+            TAG,
+            "📞 통화 종료 시간: ${
+                java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    java.util.Locale.getDefault()
+                ).format(callEndTime)
+            }"
+        )
+        Log.i(TAG, "📞 총 통화 시간: ${totalCallDuration}초 (${formatTime(totalCallDuration.toInt())})")
+
+        // 중복 호출 방지
+        if (!isCallActive) {
+            Log.w(TAG, "이미 통화 종료 처리 중 - 중복 호출 무시")
+            return
         }
+
+        // 먼저 상태 변경으로 새로운 작업 방지
+        isCallActive = false
+        isRecording = false
+        shouldShowOverlay = false
+
+        // ViewModel에 통화 종료 알림
+        endCallInternal()
 
         // 통화 종료 시간 업데이트
         currentCallUuid?.let { uuid ->
@@ -1114,82 +1025,30 @@ class CallRecordingService : Service() {
             }
         }
 
-        // 먼저 상태 변경으로 새로운 작업 방지
-        isCallActive = false
-        isRecording = false
-        shouldShowOverlay = false
+        // 진행 중인 녹음 중지
+        try {
+            Log.d(TAG, "마지막 녹음 중지 - Whisper 전사 대기")
+            recorder.stopRecording(true)
 
-        // 진행 중인 녹음 중지 (테스트 모드가 아닌 경우에만)
-        if (!CallGuardApplication.isTestModeEnabled() || currentCallUuid?.startsWith("TEST_") != true) {
-            // 마지막 녹음 처리를 위해 코루틴 취소 전에 중지
-            try {
-                Log.d(TAG, "마지막 녹음 중지 및 처리 시작...")
-                recorder.stopRecording(true)
+            // 메인 스레드에서 Handler를 사용하여 5초 후 정리
+            Handler(Looper.getMainLooper()).postDelayed({
+                Log.d(TAG, "마지막 처리 완료, 서비스 종료")
+                performFinalCleanup()
+            }, 13000) // 2초 → 5초로 변경
+            return // 여기서 리턴
 
-                // 마지막 처리 완료를 위해 더 긴 대기 시간 적용
-                Log.d(TAG, "마지막 Whisper 전사 및 서버 전송 완료 대기...")
-
-                // 진행 중인 모든 코루틴 작업 완료 대기
-                serviceScope.launch {
-                    try {
-                        // 현재 활성화된 코루틴들이 완료될 때까지 대기
-                        delay(3000) // 3초 대기로 증가
-
-                        withContext(Dispatchers.Main) {
-                            Log.d(TAG, "마지막 처리 대기 완료, 서비스 종료 진행")
-                            finalizeServiceShutdown()
-                        }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "마지막 처리 대기 중 오류: ${e.message}")
-                        withContext(Dispatchers.Main) {
-                            finalizeServiceShutdown()
-                        }
-                    }
-                }
-                return // 여기서 리턴하여 즉시 종료 방지
-
-            } catch (e: Exception) {
-                Log.e(TAG, "마지막 녹음 중지 중 오류: ${e.message}")
-            }
-        } else {
-            Log.d(TAG, "🧪 테스트 모드 - 녹음 중지 건너뜀")
+        } catch (e: Exception) {
+            Log.e(TAG, "녹음 중지 중 오류: ${e.message}")
         }
 
-        // 테스트 모드이거나 오류 발생 시 즉시 종료
-        finalizeServiceShutdown()
+        // 최종 정리 작업
+        performFinalCleanup()
     }
 
-    /**
-     * 서비스 최종 종료 처리
-     */
-    private fun finalizeServiceShutdown() {
-        Log.d(TAG, "서비스 최종 종료 처리 시작")
-
-        // 진행 중인 서버 작업 완료 대기
-        val pendingOps = synchronized(operationsLock) { pendingServerOperations.values.toList() }
-        if (pendingOps.isNotEmpty()) {
-            Log.d(TAG, "${pendingOps.size}개의 서버 작업 완료 대기 중...")
-
-            // 별도 코루틴에서 대기 처리
-            serviceScope.launch {
-                try {
-                    withTimeout(5000) {
-                        pendingOps.joinAll()
-                    }
-                    Log.d(TAG, "모든 서버 작업 완료됨")
-                } catch (e: TimeoutCancellationException) {
-                    Log.w(TAG, "일부 서버 작업이 5초 내에 완료되지 않아 강제 종료: ${pendingOps.size}개 작업")
-                } finally {
-                    // 메인 스레드에서 최종 정리 실행
-                    withContext(Dispatchers.Main) {
-                        performFinalCleanup()
-                    }
-                }
-            }
-        } else {
-            // 진행 중인 작업이 없으면 즉시 정리
-            performFinalCleanup()
-        }
+    private fun endCallInternal() {
+        // 실제 통화 종료 로직
+        isCallActive = false
+        _uiState.value = _uiState.value.copy(isCallActive = false)
     }
 
     /**
@@ -1205,5 +1064,35 @@ class CallRecordingService : Service() {
 
         Log.d(TAG, "통화 종료 완료, 서비스 중지")
         stopSelf()
+    }
+
+    /**
+     * 시간을 MM:SS 형식으로 포맷팅
+     */
+    private fun formatTime(seconds: Int): String {
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%02d:%02d", minutes, remainingSeconds)
+    }
+
+    /**
+     * 상태 클래스 - Service -> ViewModel
+     */
+    data class CallRecordingState(
+        val isCallActive: Boolean = false,
+        val isRecording: Boolean = false,
+        val callDuration: Int = 0,
+        val isPhishingDetected: Boolean = false,
+        val isDeepVoiceDetected: Boolean = false
+    )
+
+    /**
+     * 이벤트 클래스 - ViewModel -> Service
+     */
+    sealed class CallRecordingEvent {
+        object RequestStart : CallRecordingEvent()
+        object RequestStop : CallRecordingEvent()
+        data class UpdatePhishing(val detected: Boolean) : CallRecordingEvent()
+        data class UpdateDeepVoice(val detected: Boolean) : CallRecordingEvent()
     }
 }

@@ -5,6 +5,5 @@
     <mapping directory="$USER_HOME$/callguard-ai-android" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../.." vcs="Git" />
     <mapping directory="$PROJECT_DIR$/../../whisper" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/../../whisper-small-ko-zeroth" vcs="Git" />
   </component>
 </project>
