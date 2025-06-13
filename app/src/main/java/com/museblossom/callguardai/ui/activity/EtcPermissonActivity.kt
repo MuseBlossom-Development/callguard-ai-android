@@ -551,7 +551,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             TedPermission.create()
                 .setPermissionListener(permissionListener)
                 .setPermissions(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.POST_NOTIFICATIONS,
                     Manifest.permission.RECORD_AUDIO,
@@ -568,7 +567,6 @@ class EtcPermissonActivity : AppCompatActivity() {
             TedPermission.create()
                 .setPermissionListener(permissionListener)
                 .setPermissions(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.POST_NOTIFICATIONS,
                     Manifest.permission.RECORD_AUDIO,
@@ -835,7 +833,6 @@ class EtcPermissonActivity : AppCompatActivity() {
 
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2 -> {
                 arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.POST_NOTIFICATIONS,
                     Manifest.permission.RECORD_AUDIO,
@@ -850,7 +847,6 @@ class EtcPermissonActivity : AppCompatActivity() {
 
             else -> {
                 arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
                     Manifest.permission.FOREGROUND_SERVICE,
                     Manifest.permission.POST_NOTIFICATIONS,
                     Manifest.permission.RECORD_AUDIO,

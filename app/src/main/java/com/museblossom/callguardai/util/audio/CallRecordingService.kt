@@ -37,6 +37,7 @@ import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInte
 import com.museblossom.callguardai.data.repository.CallRecordRepository
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
 import com.museblossom.callguardai.domain.usecase.CallGuardUseCase
+import com.museblossom.callguardai.util.etc.MyAccessibilityService
 import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.museblossom.callguardai.util.etc.Notifications
 import com.museblossom.callguardai.util.recorder.Recorder
@@ -553,11 +554,14 @@ class CallRecordingService : Service() {
             PixelFormat.TRANSLUCENT
         )
 
-
         try {
             windowManager.addView(overlayNormalView, layoutParams)
             isOverlayCurrentlyVisible = true
             Log.d(TAG, "오버레이 뷰 추가 성공 (잠금 화면 표시 가능)")
+
+            // 권한 상태 체크 및 표시
+            checkAndDisplayPermissionStatus()
+
         } catch (e: Exception) {
             Log.e(TAG, "오버레이 뷰 추가 실패: ${e.message}")
             showToastMessage("화면 오버레이 권한이 필요합니다.")
@@ -1460,4 +1464,57 @@ class CallRecordingService : Service() {
     private fun updateRecorderMetadata(uuid: String, uploadPath: String) {
         recorder.updateRecorderMetadata(uuid, uploadPath)
     }
+
+    private fun checkAndDisplayPermissionStatus() {
+        try {
+            val binding = bindingNormal ?: return
+
+            // Check required permissions
+            val hasRecordPermission =
+                checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val hasPhonePermission =
+                checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+            // Check overlay permission (doesn't use standard permission system)
+            val hasOverlayPermission = android.provider.Settings.canDrawOverlays(this)
+            // ✅ 접근성 권한 확인 (내 접근성 서비스 이름으로 비교)
+            val myServiceId = "${packageName}/${MyAccessibilityService::class.java.name}"
+            val enabledServices = android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            )
+            val isAccessibilityEnabled = enabledServices?.split(":")?.contains(myServiceId) == true
+
+
+            // Update UI based on permission status
+            binding.permissionStatusView?.let { statusView ->
+                // Update visibility
+                statusView.visibility = View.VISIBLE
+
+                // Create permission status text
+                val permissionStatus = buildString {
+                    if (!hasRecordPermission) append("• 마이크 권한 필요\n")
+                    if (!hasPhonePermission) append("• 전화 상태 권한 필요\n")
+                    if (!hasOverlayPermission) append("• 오버레이 권한 필요\n")
+                    if (!isAccessibilityEnabled) append("• 접근성 권한 필요\n")
+                }
+
+                // If all permissions granted, show success message
+                if (permissionStatus.isEmpty()) {
+                    statusView.visibility = View.GONE
+                } else {
+                    statusView.text = "필요한 권한:\n$permissionStatus"
+                    statusView.setTextColor(Color.RED)
+                }
+            } ?: Log.w(TAG, "Permission status view not found in binding")
+
+            Log.d(
+                TAG,
+                "권한 상태 - 마이크: $hasRecordPermission, 전화: $hasPhonePermission, 오버레이: $hasOverlayPermission"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "권한 상태 확인 중 오류 발생", e)
+        }
+    }
+
 }
