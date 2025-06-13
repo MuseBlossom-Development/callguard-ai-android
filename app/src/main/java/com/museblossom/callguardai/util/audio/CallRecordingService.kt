@@ -891,34 +891,55 @@ class CallRecordingService : Service() {
     }
 
     private fun handleDeepVoice(probability: Int) {
-        // 딥보이스 감지 상태
-        if (bindingNormal == null) return
+        // 딥보이스 감지 상태 - Main 디스패처로 UI 업데이트
 
-        bindingNormal!!.deepVoicePercentTextView1.setText("${probability}%")
-        bindingNormal!!.deepVoiceTextView1.text = "합성보이스 확률"
+        serviceScope.launch(Dispatchers.Main) {
+            val binding = bindingNormal ?: return@launch
 
-        // 배경색 변경
-        when {
-            probability >= 70 -> changeWarningBackground(bindingNormal!!.deepVoiceWidget)
-            probability >= 40 -> changeCautionBackground(bindingNormal!!.deepVoiceWidget)
-            else -> changeSuccessBackground(bindingNormal!!.deepVoiceWidget)
+            binding.deepVoicePercentTextView1.setText("${probability}%")
+            binding.deepVoiceTextView1.text = "합성보이스 확률"
+
+            // 텍스트 색상 변경 (RollingTextView는 일반 TextView 메서드 사용)
+            val textColor = when {
+                probability >= 70 -> Color.RED
+                probability >= 40 -> Color.parseColor("#FF9800") // 주황색
+                else -> Color.GREEN
+            }
+            try {
+                binding.deepVoicePercentTextView1.textColor = textColor
+            } catch (e: Exception) {
+                Log.w(TAG, "RollingTextView 색상 변경 실패: ${e.message}")
+            }
+
+            // 배경색 변경
+            when {
+                probability >= 70 -> {
+                    changeWarningBackground(binding.deepVoiceWidget)
+                }
+                probability >= 40 -> {
+                    changeCautionBackground(binding.deepVoiceWidget)
+                }
+                else -> changeSuccessBackground(binding.deepVoiceWidget)
+            }
         }
     }
 
     private fun handlePhishing(text: String, isPhishing: Boolean) {
-        // 피싱 감지 상태
-        if (bindingNormal == null) return
+        // 피싱 감지 상태 - Main 디스패처로 UI 업데이트
+        serviceScope.launch(Dispatchers.Main) {
+            if (bindingNormal == null) return@launch
 
-        bindingNormal!!.phisingTextView.text = if (isPhishing) "피싱 감지됨" else "정상"
-        bindingNormal!!.phsingImageView1.setImageResource(
-            if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24
-        )
+            bindingNormal!!.phisingTextView.text = if (isPhishing) "피싱 감지됨" else "정상"
+            bindingNormal!!.phsingImageView1.setImageResource(
+                if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24
+            )
 
-        // 배경색 변경
-        if (isPhishing) {
-            changeWarningBackground(bindingNormal!!.phisingWidget)
-        } else {
-            changeSuccessBackground(bindingNormal!!.phisingWidget)
+            // 배경색 변경
+            if (isPhishing) {
+                changeWarningBackground(bindingNormal!!.phisingWidget)
+            } else {
+                changeSuccessBackground(bindingNormal!!.phisingWidget)
+            }
         }
     }
 
@@ -1183,6 +1204,7 @@ class CallRecordingService : Service() {
         try {
             Log.d(TAG, "마지막 녹음 중지 - Whisper 전사 대기")
             recorder.stopRecording(true)
+            recorder.offVibrate(applicationContext)
 
             // 메인 스레드에서 Handler를 사용하여 5초 후 정리
             Handler(Looper.getMainLooper()).postDelayed({

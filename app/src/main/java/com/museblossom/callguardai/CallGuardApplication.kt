@@ -11,11 +11,13 @@ import android.provider.Settings
 import android.util.Log
 import androidx.appcompat.app.AppCompatDelegate
 import com.google.firebase.messaging.FirebaseMessaging
+import com.museblossom.callguardai.data.database.CallGuardDatabase
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @HiltAndroidApp
 class CallGuardApplication : Application() {
@@ -75,6 +77,10 @@ class CallGuardApplication : Application() {
     // 애플리케이션 레벨 코루틴 스코프
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
+    // 데이터베이스 주입
+    @Inject
+    lateinit var database: CallGuardDatabase
+
     override fun onCreate() {
         super.onCreate()
         instance = this
@@ -90,6 +96,17 @@ class CallGuardApplication : Application() {
 
         Log.d("CallGuardApp", "애플리케이션 초기화 완료")
         Log.d("TestMode", "테스트 모드: ${if (isTestModeEnabled()) "활성화" else "비활성화"}")
+
+        // 데이터베이스 강제 초기화 (디버깅용)
+        applicationScope.launch {
+            try {
+                Log.d("DatabaseDebug", "데이터베이스 강제 초기화 시작")
+                database.callRecordDao().getAllCallRecordsList()
+                Log.d("DatabaseDebug", "데이터베이스 초기화 성공")
+            } catch (e: Exception) {
+                Log.e("DatabaseDebug", "데이터베이스 초기화 실패", e)
+            }
+        }
     }
 
     /**
