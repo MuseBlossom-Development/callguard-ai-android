@@ -7,7 +7,8 @@
     <!-- ─────────────────────────────────────────── -->
     <uses-sdk
         android:minSdkVersion="29"
-        android:targetSdkVersion="34" />
+        android:targetSdkVersion="34"
+        tools:ignore="GradleOverrides" />
 
     <!-- ─────────────────────────────────────────── -->
     <!--               권한 선언 영역               -->
@@ -32,6 +33,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- 부팅 완료 시 자동 시작을 위한 권한 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

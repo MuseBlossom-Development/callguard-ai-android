@@ -1,5 +1,6 @@
 package com.museblossom.callguardai.util.audio
 
+import android.app.KeyguardManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -10,6 +11,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.Gravity
@@ -357,11 +359,58 @@ class CallRecordingService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
             PixelFormat.TRANSLUCENT
         )
         layoutParams.gravity = Gravity.CENTER
         layoutParams.y = 0
+    }
+
+    /**
+     * 전화 수신 시 화면 깨우기 - 오버레이가 정상적으로 표시되도록
+     */
+    private fun wakeUpScreen() {
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+
+            // 화면이 꺼져있거나 잠금 상태인 경우 화면 켜기
+            val isScreenOff = !powerManager.isInteractive
+            val isLocked = keyguardManager.isKeyguardLocked
+
+            if (isScreenOff || isLocked) {
+                Log.d(TAG, "화면 상태 - 꺼짐: $isScreenOff, 잠금: $isLocked - 화면 켜기 실행")
+
+                // WakeLock으로 화면 켜기 (오버레이 표시를 위해 필요)
+                val wakeLock = powerManager.newWakeLock(
+                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                            PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                            PowerManager.ON_AFTER_RELEASE,
+                    "CallGuardAI:CallWakeUp"
+                )
+
+                wakeLock.acquire(60000) // 60초 동안 유지 (오버레이 표시 시간)
+
+                // 60초 후 자동 해제
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try {
+                        if (wakeLock.isHeld) {
+                            wakeLock.release()
+                            Log.d(TAG, "통화용 WakeLock 해제됨")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "WakeLock 해제 중 오류: ${e.message}")
+                    }
+                }, 60000)
+            } else {
+                Log.d(TAG, "화면이 이미 켜져있고 잠금해제됨 - WakeLock 불필요")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "화면 깨우기 중 오류: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -489,9 +538,26 @@ class CallRecordingService : Service() {
 
         overlayNormalView = bindingNormal?.root
 
+        // 잠금 화면에서도 오버레이가 표시되도록 플래그 설정 수정
+        val layoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+
+
         try {
             windowManager.addView(overlayNormalView, layoutParams)
             isOverlayCurrentlyVisible = true
+            Log.d(TAG, "오버레이 뷰 추가 성공 (잠금 화면 표시 가능)")
         } catch (e: Exception) {
             Log.e(TAG, "오버레이 뷰 추가 실패: ${e.message}")
             showToastMessage("화면 오버레이 권한이 필요합니다.")
@@ -1004,6 +1070,7 @@ class CallRecordingService : Service() {
                 releaseScope.launch {
                     try {
                         context.release()
+                        whisperContext = null
                         Log.d(TAG, "WhisperContext 해제 완료")
                     } catch (e: Exception) {
                         Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
@@ -1075,6 +1142,9 @@ class CallRecordingService : Service() {
             }"
         )
         Log.i(TAG, "📞 전화번호: $currentPhoneNumber")
+
+        // 전화 수신 시 화면 깨우기 - 녹음이 정상 작동하도록
+        wakeUpScreen()
 
         // ViewModel에 통화 시작 알림
         startCallInternal()
@@ -1210,7 +1280,7 @@ class CallRecordingService : Service() {
             Handler(Looper.getMainLooper()).postDelayed({
                 Log.d(TAG, "마지막 처리 완료, 서비스 종료")
                 performFinalCleanup()
-            }, 13000) // 2초 → 5초로 변경
+            }, 2000) // 2초 → 5초로 변경
             return // 여기서 리턴
 
         } catch (e: Exception) {

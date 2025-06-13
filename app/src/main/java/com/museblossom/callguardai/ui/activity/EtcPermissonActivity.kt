@@ -369,7 +369,8 @@ class EtcPermissonActivity : AppCompatActivity() {
     private fun moveToAccessibilityPermissionActivity() {
         val intent = Intent(this, AccessibilityPermissionActivity::class.java)
         startActivity(intent)
-        finish()
+        // finish() 제거 - 백스택에서 유지
+        // finish()
     }
 
     private fun finishWithSuccess() {

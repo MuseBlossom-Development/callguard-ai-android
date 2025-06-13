@@ -172,11 +172,11 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
                 checkCount++
 
                 val hasAccessibilityPermission = isAccessibilityServiceEnabled()
-
-                Log.d(
-                    "AccessibilityPermission",
-                    "접근성 권한 체크 ${checkCount}회 (${checkCount * 0.1}초): $hasAccessibilityPermission"
-                )
+//
+//                Log.d(
+//                    "AccessibilityPermission",
+//                    "접근성 권한 체크 ${checkCount}회 (${checkCount * 0.1}초): $hasAccessibilityPermission"
+//                )
 
                 if (hasAccessibilityPermission) {
                     Log.d("AccessibilityPermission", "접근성 권한 자동 감지됨! (${checkCount * 0.1}초 후)")
@@ -250,12 +250,24 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             Toast.LENGTH_LONG
         ).show()
 
-        // 2초 후 앱 종료 (모든 설정이 완료되었으므로)
+        // 홈 화면으로 이동
         lifecycleScope.launch {
-            delay(2000)
+//            delay(1000) // 1초 후 홈 화면으로
 
+            try {
+                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(homeIntent)
+                Log.d("AccessibilityPermission", "홈 화면으로 이동 완료")
+            } catch (e: Exception) {
+                Log.e("AccessibilityPermission", "홈 화면 이동 실패", e)
+            }
+
+            // 모든 액티비티 종료
+            finishAffinity()
             Log.d("AccessibilityPermission", "모든 권한 설정 완료 - 앱 종료")
-            finishAffinity() // 모든 액티비티 종료
         }
     }
 
