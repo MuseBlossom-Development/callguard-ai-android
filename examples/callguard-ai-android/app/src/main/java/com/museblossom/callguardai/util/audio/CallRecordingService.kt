@@ -1,106 +1,89 @@
-override fun onDestroy() {
-    super.onDestroy()
-    Log.d(TAG, "통화녹음 서비스 종료 중")
-
-        // 먼저 오버레이 제거
-        removeOverlayView()
-        isOverlayCurrentlyVisible = false
-        serviceInstance = null
-
-        // Whisper 리소스 해제를 위한 별도 스코프 생성
-        val cleanupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        cleanupScope.launch {
-            try {
-                whisperContext?.release()
-                Log.d(TAG, "WhisperContext 해제 완료")
-            } catch (e: Exception) {
-                Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
-            } finally {
-                whisperContext = null
-                cleanupScope.cancel()
-            }
+/**
+ * FCM으로부터 딥보이스 분석 결과 처리
+ */
+private fun handleFCMDeepVoiceResult(uuid: String, probability: Int) {
+    if (currentCallUuid == uuid) {
+        // 통화 중이면서 오버레이가 표시되어 있을 때는 UI 업데이트
+        if (isCallActive && isOverlayCurrentlyVisible) {
+            Log.d(TAG, "딥보이스 FCM 결과 - 오버레이 업데이트: $probability%")
+            handleDeepVoiceAnalysis(probability)
+        } else {
+            // 통화중이 아니거나 오버레이가 표시되지 않으면 알림 생성
+            Log.d(TAG, "딥보이스 FCM 결과 - 알림 표시: $probability%")
+            showDeepVoiceNotification(probability)
         }
+    }
+}
 
-        // 기존 서비스 스코프 취소
-        serviceScope.cancel()
+/**
+ * FCM으로부터 보이스피싱 분석 결과 처리
+ */
+private fun handleFCMVoicePhishingResult(uuid: String, probability: Int) {
+    if (currentCallUuid == uuid) {
+        // 통화 중이면서 오버레이가 표시되어 있을 때는 UI 업데이트
+        if (isCallActive && isOverlayCurrentlyVisible) {
+            Log.d(TAG, "보이스피싱 FCM 결과 - 오버레이 업데이트: $probability%")
+            val isPhishing = probability >= 50
+            handlePhishingAnalysis("전화 내용", isPhishing)
+        } else {
+            // 통화중이 아니거나 오버레이가 표시되지 않으면 알림 생성
+            Log.d(TAG, "보이스피싱 FCM 결과 - 알림 표시: $probability%")
+            showVoicePhishingNotification(probability)
+        }
+    }
+}
 
-        Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
+/**
+ * 딥보이스 감지 알림 표시
+ */
+private fun showDeepVoiceNotification(probability: Int) {
+    val title = "합성 보이스 감지"
+    val message = when {
+        probability >= 70 -> "위험: 합성 보이스 확률 ${probability}%"
+        probability >= 40 -> "주의: 합성 보이스 확률 ${probability}%"
+        else -> "낮음: 합성 보이스 확률 ${probability}%"
     }
 
-    private fun setRecordListener() {
-        Log.d(TAG, "RecordListener 설정")
-        recorder.setRecordListner(object : EnhancedRecorderListener {
-            override fun onWaveConvertComplete(filePath: String?) {
-                // 기존 콜백 - 호환성을 위해 유지하지만 새 콜백이 우선
-                Log.d(TAG, "기존 콜백 호출됨: $filePath")
-            }
+    val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
+        .setContentTitle(title)
+        .setContentText(message)
+        .setSmallIcon(R.drawable.app_logo)
+        .setPriority(android.app.NotificationCompat.PRIORITY_HIGH)
+        .setAutoCancel(true)
+        .build()
 
-            override fun onWaveFileReady(file: File, fileSize: Long, isValid: Boolean) {
-                Log.d(TAG, "========================================")
-                Log.d(TAG, "WAV 파일 완성 콜백 호출됨")
-                Log.d(TAG, "파일: ${file.absolutePath}")
-                Log.d(TAG, "크기: $fileSize bytes")
-                Log.d(TAG, "유효성: $isValid")
-                Log.d(TAG, "실제 파일 존재: ${file.exists()}")
-                Log.d(TAG, "실제 파일 크기: ${file.length()}")
+    val notificationManager =
+        getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    notificationManager.notify(
+        Notifications.NOTIFICATION_ID__CALL_RECORDING + 1,
+        notification
+    )
+}
 
-                if (!isValid) {
-                    Log.e(TAG, "유효하지 않은 파일로 처리 중단")
-                    return
-                }
-
-                if (!file.exists()) {
-                    Log.e(TAG, "파일이 존재하지 않음 - Recorder에서 잘못된 콜백")
-                    return
-                }
-
-                if (file.length() != fileSize) {
-                    Log.w(TAG, "파일 크기 불일치 - 예상: $fileSize, 실제: ${file.length()}")
-                }
-
-                serviceScope.launch {
-                    try {
-                        Log.d(TAG, "decodeWaveFile 시작...")
-                        val data = decodeWaveFile(file)
-                        Log.d(TAG, "decodeWaveFile 완료 - 데이터 크기: ${data.size}")
-
-                        withContext(Dispatchers.Main) {
-                            transcribeWithWhisper(data)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "WAV 파일 디코딩 중 오류: ${e.message}", e)
-                    }
-                }
-                Log.d(TAG, "========================================")
-            }
-        })
+/**
+ * 보이스피싱 감지 알림 표시
+ */
+private fun showVoicePhishingNotification(probability: Int) {
+    val isPhishing = probability >= 50
+    val title = if (isPhishing) "보이스피싱 감지" else "통화 안전"
+    val message = if (isPhishing) {
+        "위험: 보이스피싱 가능성 ${probability}%"
+    } else {
+        "안전: 정상 통화로 분석됨"
     }
 
-    private fun initializeRecorder() {
-        recorder = Recorder(
-            context = this,
-            callback = { elapsedSeconds ->
-                callDuration = elapsedSeconds
-                Log.d(TAG, "통화 시간: ${elapsedSeconds}초")
-                // 15초마다 세그먼트 파일 처리
-                if (elapsedSeconds > 0 && elapsedSeconds % 15 == 0) {
-                    Log.d(TAG, "${elapsedSeconds}초 경과, 분석 주기 도달")
-                    serviceScope.launch {
-                        // 분석을 위해 현재 녹음 중지하고 재시작
-                        withContext(Dispatchers.Main) {
-                            recorder.stopRecording(false)
-                            recorder.startRecording(0, isOnlyWhisper)
-                        }
-                    }
-                }
-            },
-            detectCallback = { isDeepVoiceDetected: Boolean, probability: Int ->
-                serviceScope.launch {
-                    handleDeepVoiceAnalysis(probability)
-                }
-            },
-            audioAnalysisRepository = audioAnalysisRepository
-        )
+    val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
+        .setContentTitle(title)
+        .setContentText(message)
+        .setSmallIcon(R.drawable.app_logo)
+        .setPriority(if (isPhishing) android.app.NotificationCompat.PRIORITY_HIGH else android.app.NotificationCompat.PRIORITY_DEFAULT)
+        .setAutoCancel(true)
+        .build()
 
-        setRecordListener()
-    }
+    val notificationManager =
+        getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+    notificationManager.notify(
+        Notifications.NOTIFICATION_ID__CALL_RECORDING + 2,
+        notification
+    )
+}

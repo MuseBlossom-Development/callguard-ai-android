@@ -18,8 +18,17 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.tasks.await
 import com.museblossom.callguardai.CallGuardApplication
 import com.museblossom.callguardai.R
+
 import com.museblossom.callguardai.databinding.CallFloatingBinding
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
@@ -48,6 +57,7 @@ import kotlinx.coroutines.withContext
 import java.util.*
 import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.tasks.await
 
 /**
  * 통화 녹음 서비스 - 직접 상태 관리
@@ -156,6 +166,35 @@ class CallRecordingService : Service() {
         fun getStateFlow(): StateFlow<CallRecordingState>? {
             return serviceInstance?.uiState
         }
+
+        /**
+         * 통화 중이면서 오버레이가 표시되어 있는지 확인
+         */
+        fun isCallActiveWithOverlay(): Boolean {
+            return serviceInstance?.isCallActive == true && isOverlayCurrentlyVisible
+        }
+
+        /**
+         * FCM으로부터 딥보이스 분석 결과 업데이트
+         */
+        fun updateDeepVoiceFromFCM(uuid: String, probability: Int) {
+            Log.d(
+                "통화녹음서비스",
+                "Companion: 딥보이스 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}"
+            )
+            serviceInstance?.handleFCMDeepVoiceResult(uuid, probability)
+        }
+
+        /**
+         * FCM으로부터 보이스피싱 분석 결과 업데이트
+         */
+        fun updateVoicePhishingFromFCM(uuid: String, probability: Int) {
+            Log.d(
+                "통화녹음서비스",
+                "Companion: 보이스피싱 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}"
+            )
+            serviceInstance?.handleFCMVoicePhishingResult(uuid, probability)
+        }
     }
 
     override fun onCreate() {
@@ -195,6 +234,28 @@ class CallRecordingService : Service() {
                         isDeepVoiceDetected = event.detected
                     }
                 }
+            }
+        }
+    }
+
+    /**
+     * FCM 토큰 갱신 및 서버 전송
+     */
+    private fun updateFCMToken() {
+        serviceScope.launch {
+            try {
+                val fcmToken = FirebaseMessaging.getInstance().token.await()
+                Log.d(TAG, "FCM 토큰 획득: $fcmToken")
+
+                // 서버에 FCM 토큰 전송
+                val result = callGuardUseCase.updateFCMToken(fcmToken)
+                if (result.isSuccess) {
+                    Log.d(TAG, "FCM 토큰 서버 전송 성공")
+                } else {
+                    Log.e(TAG, "FCM 토큰 서버 전송 실패: ${result.exceptionOrNull()?.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "FCM 토큰 갱신 실패", e)
             }
         }
     }
@@ -914,24 +975,70 @@ class CallRecordingService : Service() {
         isOverlayCurrentlyVisible = false
         serviceInstance = null
 
-        // WhisperContext 해제를 위한 별도 스코프 생성
-        val cleanupScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-        cleanupScope.launch {
+        // WhisperContext 안전 해제 - finalizer 문제 방지
+        whisperContext?.let { context ->
             try {
-                whisperContext?.release()
-                Log.d(TAG, "WhisperContext 해제 완료")
-            } catch (e: Exception) {
-                Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
-            } finally {
+                // 독립적인 코루틴 스코프로 즉시 해제
+                val releaseScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+                releaseScope.launch {
+                    try {
+                        context.release()
+                        Log.d(TAG, "WhisperContext 해제 완료")
+                    } catch (e: Exception) {
+                        Log.w(TAG, "WhisperContext 해제 중 오류: ${e.message}")
+                    } finally {
+                        releaseScope.cancel()
+                    }
+                }
+                // 즉시 null로 설정하여 finalizer 실행 방지
                 whisperContext = null
-                cleanupScope.cancel()
+            } catch (e: Exception) {
+                Log.w(TAG, "WhisperContext 해제 스코프 생성 실패: ${e.message}")
+                whisperContext = null
             }
         }
 
         // 기존 서비스 스코프 취소
-        serviceScope.cancel()
+        try {
+            serviceScope.cancel()
+            Log.d(TAG, "ServiceScope 취소 완료")
+        } catch (e: Exception) {
+            Log.w(TAG, "ServiceScope 취소 중 오류: ${e.message}")
+        }
 
         Log.d(TAG, "통화녹음 서비스 onDestroy 완료")
+    }
+
+    /**
+     * Silent 구글 로그인 수행
+     */
+    private suspend fun performSilentSignIn(): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "Silent 구글 로그인 시도")
+
+            // GoogleSignInOptions 설정
+            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                .requestIdToken(getString(R.string.default_web_client_id))
+                .requestEmail()
+                .build()
+
+            // GoogleSignInClient 생성
+            val googleSignInClient = GoogleSignIn.getClient(this@CallRecordingService, gso)
+
+            // Silent 로그인 수행
+            val account = googleSignInClient.silentSignIn().await()
+
+            if (account != null) {
+                Log.d(TAG, "Silent 로그인 성공 - account: $account")
+                Result.success(account.idToken ?: "")
+            } else {
+                Log.w(TAG, "Silent 로그인 실패 - 계정 정보가 null")
+                Result.failure(Exception("Silent 로그인 실패 - 계정 정보가 null"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Silent 로그인 실패", e)
+            Result.failure(e)
+        }
     }
 
     private fun startCall() {
@@ -951,21 +1058,25 @@ class CallRecordingService : Service() {
         // ViewModel에 통화 시작 알림
         startCallInternal()
 
-        // CDN URL API를 호출하여 UUID 받아오기
+        // UseCase를 통한 통화 분석 준비 (Silent 로그인 + CDN URL)
         serviceScope.launch {
             try {
-                val cdnResult = callGuardUseCase.getCDNUrl()
+                val result = callGuardUseCase.prepareCallAnalysis {
+                    performSilentSignIn()
+                }
 
-                if (cdnResult.isSuccess) {
-                    val cdnData = cdnResult.getOrNull()
-                    if (cdnData != null) {
-                        currentCallUuid = cdnData.uuid  // 서버에서 발급받은 UUID 사용
+                result.fold(
+                    onSuccess = { cdnData ->
+                        currentCallUuid = cdnData.uuid
                         currentCDNUploadPath = cdnData.uploadPath
 
                         Log.d(
                             TAG,
-                            "CDN URL 요청 성공 - UUID: ${currentCallUuid}, 업로드 경로: ${currentCDNUploadPath}"
+                            "통화 분석 준비 완료 - UUID: ${currentCallUuid}, 업로드 경로: ${currentCDNUploadPath}"
                         )
+
+                        // FCM 토큰 갱신 및 서버 전송
+                        updateFCMToken()
 
                         // 통화 기록 저장
                         currentPhoneNumber?.let { phoneNumber ->
@@ -979,20 +1090,16 @@ class CallRecordingService : Service() {
 
                         // Recorder에 UUID와 CDN 경로 업데이트
                         updateRecorderMetadata(currentCallUuid!!, currentCDNUploadPath!!)
-                    } else {
-                        Log.e(TAG, "CDN URL API 호출 실패: 결과가 null입니다")
-                        // API 호출 실패 시 임시 UUID 생성
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "통화 분석 준비 실패", exception)
+                        // 실패 시 임시 UUID 생성
                         currentCallUuid = java.util.UUID.randomUUID().toString()
                         Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
                     }
-                } else {
-                    Log.e(TAG, "CDN URL API 호출 실패: ${cdnResult.exceptionOrNull()?.message}")
-                    // API 호출 실패 시 임시 UUID 생성
-                    currentCallUuid = java.util.UUID.randomUUID().toString()
-                    Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
-                }
+                )
             } catch (e: Exception) {
-                Log.e(TAG, "CDN URL API 호출 중 오류", e)
+                Log.e(TAG, "통화 분석 준비 중 오류", e)
                 // 오류 발생 시 임시 UUID 생성
                 currentCallUuid = java.util.UUID.randomUUID().toString()
                 Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
@@ -1121,6 +1228,117 @@ class CallRecordingService : Service() {
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
         return String.format("%02d:%02d", minutes, remainingSeconds)
+    }
+
+    /**
+     * FCM으로부터 딥보이스 분석 결과 처리
+     */
+    private fun handleFCMDeepVoiceResult(uuid: String, probability: Int) {
+        Log.d(TAG, "FCM 딥보이스 결과 수신: UUID=$uuid, 확률=$probability%")
+        Log.d(
+            TAG,
+            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible"
+        )
+
+        if (currentCallUuid == uuid) {
+            // 통화 중이면서 오버레이가 표시되어 있을 때는 UI 업데이트
+            if (isCallActive && isOverlayCurrentlyVisible) {
+                // 통화 중이면서 오버레이가 표시되어 있을 때는 UI 업데이트
+                Log.d(TAG, "딥보이스 FCM 결과 - 오버레이 업데이트: $probability%")
+                handleDeepVoiceAnalysis(probability)
+            } else {
+                // 통화중이 아니거나 오버레이가 표시되지 않으면 알림 생성
+                Log.d(TAG, "딥보이스 FCM 결과 - 알림 표시: $probability%")
+                showDeepVoiceNotification(probability)
+            }
+        } else {
+            Log.d(TAG, "UUID 불일치로 FCM 결과 무시: 현재=$currentCallUuid, 수신=$uuid")
+        }
+    }
+
+    /**
+     * FCM으로부터 보이스피싱 분석 결과 처리
+     */
+    private fun handleFCMVoicePhishingResult(uuid: String, probability: Int) {
+        Log.d(TAG, "FCM 보이스피싱 결과 수신: UUID=$uuid, 확률=$probability%")
+        Log.d(
+            TAG,
+            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible"
+        )
+
+        if (currentCallUuid == uuid) {
+            // 통화 중이면서 오버레이가 표시되어 있을 때는 UI 업데이트
+            if (isCallActive && isOverlayCurrentlyVisible) {
+                Log.d(TAG, "보이스피싱 FCM 결과 - 오버레이 업데이트: $probability%")
+                val isPhishing = probability >= 50
+                handlePhishingAnalysis("전화 내용", isPhishing)
+            } else {
+                // 통화중이 아니거나 오버레이가 표시되지 않으면 알림 생성
+                Log.d(TAG, "보이스피싱 FCM 결과 - 알림 표시: $probability%")
+                showVoicePhishingNotification(probability)
+            }
+        } else {
+            Log.d(TAG, "UUID 불일치로 FCM 결과 무시: 현재=$currentCallUuid, 수신=$uuid")
+        }
+    }
+
+    /**
+     * 딥보이스 감지 알림 표시
+     */
+    private fun showDeepVoiceNotification(probability: Int) {
+        val title = getString(R.string.service_notification_deep_voice_title)
+        val message = when {
+            probability >= 70 -> getString(R.string.deep_voice_probability_high, probability)
+            probability >= 40 -> getString(R.string.deep_voice_probability_medium, probability)
+            else -> getString(R.string.deep_voice_probability_low, probability)
+        }
+
+        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.app_logo)
+            .setPriority(android.app.Notification.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.notify(
+            Notifications.NOTIFICATION_ID__CALL_RECORDING + 1,
+            notification
+        )
+    }
+
+    /**
+     * 보이스피싱 감지 알림 표시
+     */
+    private fun showVoicePhishingNotification(probability: Int) {
+        val isPhishing = probability >= 50
+        val title = if (isPhishing) {
+            getString(R.string.service_notification_voice_phishing_title)
+        } else {
+            getString(R.string.service_notification_call_safe_title)
+        }
+        val message = if (isPhishing) {
+            getString(R.string.voice_phishing_probability_detected, probability)
+        } else {
+            getString(R.string.voice_phishing_safe)
+        }
+
+        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setSmallIcon(R.drawable.app_logo)
+            .setPriority(if (isPhishing) android.app.Notification.PRIORITY_HIGH else android.app.Notification.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .build()
+
+        val notificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        notificationManager.notify(
+            Notifications.NOTIFICATION_ID__CALL_RECORDING + 2,
+            notification
+        )
     }
 
     /**

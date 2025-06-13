@@ -3,6 +3,7 @@ package com.museblossom.callguardai.util.etc
 import android.content.Context
 import android.provider.ContactsContract
 import android.util.Log
+import com.museblossom.callguardai.R
 
 /**
  * 연락처 조회 유틸리티
@@ -19,34 +20,64 @@ object ContactsUtils {
      */
     fun getContactName(context: Context, phoneNumber: String): String? {
         try {
-            // 전화번호 정규화 (공백, 하이픈 제거)
-            val normalizedNumber = phoneNumber.replace(Regex("[\\s-()]"), "")
+            // 권한 확인
+            if (!hasContactsPermission(context)) {
+                Log.w(TAG, context.getString(R.string.contact_permission_required))
+                return null
+            }
+
+            // 다양한 형태의 전화번호 생성
+            val numbers = generatePhoneNumberVariants(phoneNumber)
+            Log.d(
+                TAG,
+                "${context.getString(R.string.log_call_record_query_result)}: 원본=$phoneNumber, 변형=${numbers.joinToString()}"
+            )
 
             val cursor = context.contentResolver.query(
                 ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
-                "${ContactsContract.CommonDataKinds.Phone.NUMBER} = ? OR ${ContactsContract.CommonDataKinds.Phone.NUMBER} = ?",
-                arrayOf(phoneNumber, normalizedNumber),
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                ),
+                null,
+                null,
                 null
             )
 
             cursor?.use {
-                if (it.moveToFirst()) {
+                while (it.moveToNext()) {
                     val nameIndex =
                         it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
-                    if (nameIndex >= 0) {
+                    val numberIndex =
+                        it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+
+                    if (nameIndex >= 0 && numberIndex >= 0) {
                         val name = it.getString(nameIndex)
-                        Log.d(TAG, "연락처 찾음: $phoneNumber -> $name")
-                        return name
+                        val storedNumber = it.getString(numberIndex)
+
+                        // 저장된 번호와 조회하는 번호의 모든 변형을 비교
+                        val storedVariants = generatePhoneNumberVariants(storedNumber)
+
+                        for (searchNum in numbers) {
+                            for (storedNum in storedVariants) {
+                                if (searchNum == storedNum) {
+                                    Log.d(
+                                        TAG,
+                                        "${context.getString(R.string.contact_found)}: $phoneNumber -> $name (매칭: $searchNum = $storedNum)"
+                                    )
+                                    return name
+                                }
+                            }
+                        }
                     }
                 }
             }
 
-            Log.d(TAG, "연락처를 찾을 수 없음: $phoneNumber")
+            Log.d(TAG, "${context.getString(R.string.contact_not_found)}: $phoneNumber")
             return null
 
         } catch (e: Exception) {
-            Log.e(TAG, "연락처 조회 중 오류", e)
+            Log.e(TAG, context.getString(R.string.contact_query_error), e)
             return null
         }
     }
@@ -82,11 +113,67 @@ object ContactsUtils {
             cursor?.close()
             true
         } catch (e: SecurityException) {
-            Log.w(TAG, "연락처 권한이 없음", e)
+            Log.w(TAG, context.getString(R.string.contact_permission_required), e)
             false
         } catch (e: Exception) {
-            Log.e(TAG, "연락처 권한 확인 중 오류", e)
+            Log.e(TAG, context.getString(R.string.contact_query_error), e)
             false
         }
+    }
+
+    /**
+     * 전화번호의 다양한 변형 생성
+     * @param phoneNumber 원본 전화번호
+     * @return 변형된 전화번호 목록
+     */
+    private fun generatePhoneNumberVariants(phoneNumber: String): List<String> {
+        val variants = mutableSetOf<String>()
+
+        // 원본 추가
+        variants.add(phoneNumber)
+
+        // 모든 특수문자 제거
+        val numbersOnly = phoneNumber.replace(Regex("[^0-9]"), "")
+        variants.add(numbersOnly)
+
+        // 한국 번호 처리
+        if (numbersOnly.startsWith("010")) {
+            // 010-1234-5678 형태
+            if (numbersOnly.length == 11) {
+                variants.add(
+                    "${numbersOnly.substring(0, 3)}-${
+                        numbersOnly.substring(
+                            3,
+                            7
+                        )
+                    }-${numbersOnly.substring(7)}"
+                )
+                variants.add(
+                    "${numbersOnly.substring(0, 3)} ${
+                        numbersOnly.substring(
+                            3,
+                            7
+                        )
+                    } ${numbersOnly.substring(7)}"
+                )
+            }
+        }
+
+        // +82 형태 처리
+        if (numbersOnly.startsWith("82") && numbersOnly.length == 12) {
+            val withoutCountryCode = "0" + numbersOnly.substring(2)
+            variants.add(withoutCountryCode)
+            variants.add("+82 " + numbersOnly.substring(2))
+            variants.add("+82-" + numbersOnly.substring(2))
+        }
+
+        // 앞의 0 제거/추가
+        if (numbersOnly.startsWith("0")) {
+            variants.add(numbersOnly.substring(1))
+        } else if (!numbersOnly.startsWith("0") && numbersOnly.length == 10) {
+            variants.add("0$numbersOnly")
+        }
+
+        return variants.toList()
     }
 }

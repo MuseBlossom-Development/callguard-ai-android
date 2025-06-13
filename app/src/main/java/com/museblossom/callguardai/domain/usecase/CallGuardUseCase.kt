@@ -24,6 +24,54 @@ class CallGuardUseCase @Inject constructor(
     }
 
     /**
+     * 통화 시작 시 인증 확인 및 CDN URL 요청
+     * 1. 구글 Silent 로그인 시도 (무조건)
+     * 2. JWT 토큰 갱신
+     * 3. CDN URL 요청
+     */
+    suspend fun prepareCallAnalysis(
+        onSilentSignIn: suspend () -> Result<String>
+    ): Result<CDNUrlData> = withContext(dispatcher) {
+        try {
+            Log.d(TAG, "통화 분석 준비 시작 - Silent 로그인부터 시도")
+
+            // 1. 무조건 Silent 구글 로그인 시도
+            val silentResult = onSilentSignIn()
+            if (silentResult.isFailure) {
+                Log.e(TAG, "Silent 로그인 실패: ${silentResult.exceptionOrNull()?.message}")
+                return@withContext Result.failure(
+                    silentResult.exceptionOrNull() ?: Exception("Silent 로그인 실패")
+                )
+            }
+
+            val googleIdToken = silentResult.getOrNull()!!
+            Log.d(TAG, "Silent 로그인 성공")
+
+            // 2. 서버에 구글 토큰으로 JWT 요청
+            val loginResult = repository.snsLogin(googleIdToken)
+            if (loginResult.isFailure) {
+                Log.e(TAG, "JWT 토큰 갱신 실패: ${loginResult.exceptionOrNull()?.message}")
+                return@withContext Result.failure(
+                    loginResult.exceptionOrNull() ?: Exception("JWT 토큰 갱신 실패")
+                )
+            }
+
+            Log.d(TAG, "JWT 토큰 갱신 성공")
+
+            // 3. CDN URL 요청
+            val cdnResult = repository.getCDNUrl()
+            if (cdnResult.isSuccess) {
+                Log.d(TAG, "CDN URL 요청 성공")
+            }
+            cdnResult
+
+        } catch (e: Exception) {
+            Log.e(TAG, "통화 분석 준비 중 예외 발생", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * STT 모델 다운로드
      */
     suspend fun downloadSTTModel(): Result<STTModelData> = withContext(dispatcher) {

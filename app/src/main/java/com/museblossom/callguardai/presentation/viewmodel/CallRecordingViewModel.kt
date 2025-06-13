@@ -1,18 +1,25 @@
 package com.museblossom.callguardai.presentation.viewmodel
 
+import android.content.Context
+import androidx.credentials.CredentialManager
+import androidx.credentials.GetCredentialRequest
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.domain.model.AnalysisResult
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
+import com.museblossom.callguardai.domain.usecase.CallGuardUseCase
 import com.museblossom.callguardai.util.audio.CallRecordingService
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.File
 import android.util.Log
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 /**
@@ -21,13 +28,18 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class CallRecordingViewModel @Inject constructor(
-    private val analyzeAudioUseCase: AnalyzeAudioUseCase
+    private val analyzeAudioUseCase: AnalyzeAudioUseCase,
+    private val callGuardUseCase: CallGuardUseCase,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     companion object {
         private const val TAG = "CallRecordingViewModel"
         private const val MAX_NO_DETECTION_COUNT = 4
     }
+
+    // CDN URL 저장
+    private var currentCDNUrl: String? = null
 
     // === 통화 상태 ===
     private val _isCallActive = MutableLiveData<Boolean>()
@@ -154,6 +166,32 @@ class CallRecordingViewModel @Inject constructor(
     }
 
     /**
+     * 통화 시작 - 무음 로그인 및 CDN URL 준비 포함
+     *
+     * 사용법:
+     * 1. 전화가 걸려올 때 이 메서드 호출
+     * 2. Silent 구글 로그인 시도
+     * 3. JWT 토큰 갱신
+     * 4. CDN URL 요청
+     * 5. 준비 완료 후 분석 기능 활성화
+     *
+     * 실패 시 분석 기능 없이 통화만 진행
+     */
+    fun startCallWithSilentSignIn() {
+        Log.d(TAG, "통화 시작 - 인증 및 CDN URL 준비")
+        _isCallActive.value = true
+        _isPhishingDetected.value = false
+        _isDeepVoiceDetected.value = false
+        _noDetectionCount.value = 0
+        _shouldShowOverlay.value = true
+        _overlayUiState.value = OverlayUiState.NORMAL
+        _hasInitialAnalysisCompleted.value = false
+
+        // 인증 및 CDN URL 준비
+        prepareCallAnalysis()
+    }
+
+    /**
      * 통화 종료
      */
     fun endCall() {
@@ -246,6 +284,92 @@ class CallRecordingViewModel @Inject constructor(
                 _errorMessage.value = "피싱 분석 중 오류: ${e.message}"
             }
         }
+    }
+
+    /**
+     * 통화 분석 준비 (인증 + CDN URL)
+     */
+    private fun prepareCallAnalysis() {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "통화 분석 준비 시작")
+
+                val result = callGuardUseCase.prepareCallAnalysis { performSilentSignIn() }
+
+                result.fold(
+                    onSuccess = { cdnData ->
+                        currentCDNUrl = cdnData.uploadPath
+                        Log.d(TAG, "CDN URL 준비 완료: ${cdnData.uploadPath}")
+                        _toastMessage.value = "분석 준비 완료"
+                    },
+                    onFailure = { exception ->
+                        Log.e(TAG, "통화 분석 준비 실패", exception)
+                        currentCDNUrl = null
+                        _errorMessage.value = "분석 준비 실패: ${exception.message}"
+                        _toastMessage.value = "인증이 필요합니다. 분석 기능이 비활성화됩니다."
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "통화 분석 준비 중 오류", e)
+                currentCDNUrl = null
+                _errorMessage.value = "분석 준비 중 오류: ${e.message}"
+            }
+        }
+    }
+
+    /**
+     * Silent 구글 로그인 수행
+     */
+    private suspend fun performSilentSignIn(): Result<String> {
+        return try {
+            Log.d(TAG, "Silent 구글 로그인 시도")
+
+            val credentialManager = CredentialManager.create(context)
+
+            val googleIdOption = GetGoogleIdOption.Builder()
+                .setServerClientId(context.getString(R.string.default_web_client_id))
+                .setFilterByAuthorizedAccounts(true)  // 기존 계정만
+                .setAutoSelectEnabled(true)           // 자동 선택
+                .build()
+
+            val request = GetCredentialRequest.Builder()
+                .addCredentialOption(googleIdOption)
+                .build()
+
+            val credentialResponse = credentialManager.getCredential(
+                request = request,
+                context = context
+            )
+
+            when (val credential = credentialResponse.credential) {
+                is GoogleIdTokenCredential -> {
+                    Log.d(TAG, "Silent 로그인 성공")
+                    Result.success(credential.idToken)
+                }
+
+                else -> {
+                    Log.e(TAG, "예상치 못한 자격증명 타입")
+                    Result.failure(Exception("예상치 못한 자격증명 타입"))
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Silent 로그인 실패", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 네트워크를 통한 딥보이스 분석 (CDN URL 사용)
+     */
+    fun analyzeDeepVoiceFromNetwork(audioFile: File) {
+        val uploadUrl = currentCDNUrl
+        if (uploadUrl == null) {
+            Log.e(TAG, "CDN URL이 준비되지 않음")
+            _errorMessage.value = "분석 URL이 준비되지 않았습니다"
+            return
+        }
+
+        analyzeDeepVoiceFromNetwork(audioFile, uploadUrl)
     }
 
     /**
@@ -441,11 +565,6 @@ class CallRecordingViewModel @Inject constructor(
         _shouldVibrate.value = false
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        Log.d(TAG, "CallRecordingViewModel 정리 완료")
-    }
-
     /**
      * 오버레이 UI 상태
      */
@@ -479,4 +598,9 @@ class CallRecordingViewModel @Inject constructor(
         val iconRes: Int,
         val riskLevel: AnalysisResult.RiskLevel
     )
+
+    override fun onCleared() {
+        super.onCleared()
+        Log.d(TAG, "CallRecordingViewModel 정리 완료")
+    }
 }
