@@ -5,17 +5,13 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.denzcoskun.imageslider.constants.ScaleTypes
 import com.denzcoskun.imageslider.models.SlideModel
 import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ActivityPermissionDeinedBinding
 import com.museblossom.callguardai.databinding.PermissionEtcDialogBinding
-import com.museblossom.callguardai.ui.activity.SplashActivity
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
 
@@ -23,11 +19,13 @@ class PermissionDeinedActivity : AppCompatActivity() {
     private lateinit var binding: ActivityPermissionDeinedBinding
     private lateinit var dialogPlus: DialogPlus
     private lateinit var customView: PermissionEtcDialogBinding
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityPermissionDeinedBinding.inflate(layoutInflater).apply {
-            setContentView(root)
-        }
+        binding =
+            ActivityPermissionDeinedBinding.inflate(layoutInflater).apply {
+                setContentView(root)
+            }
         showEtcPermissionDialog(this@PermissionDeinedActivity)
     }
 
@@ -46,7 +44,7 @@ class PermissionDeinedActivity : AppCompatActivity() {
 //            .setPositiveButton("설정으로 이동") { _, _ ->
 //                openAccessibilitySettings(context)
 //            }
-////            .setNegativeButton("취소", null)
+// //            .setNegativeButton("취소", null)
 //            .show()
 
 //        val customView = LayoutInflater.from(this@SplashActivity).inflate(R.layout.permission_dialog,null)
@@ -56,23 +54,25 @@ class PermissionDeinedActivity : AppCompatActivity() {
         val originalStatusBarColor = window.statusBarColor
         window.statusBarColor = ContextCompat.getColor(this, R.color.dialogplus_black_overlay)
 
-        dialogPlus = DialogPlus.newDialog(this@PermissionDeinedActivity)
-            .setContentBackgroundResource(R
-                .drawable.dialog_round)
-            .setContentHolder(viewHolder)
-            .setCancelable(false)
-            .setExpanded(false)
-            .setOnDismissListener {
-                window.statusBarColor = originalStatusBarColor
-            }
-            .create()
+        dialogPlus =
+            DialogPlus.newDialog(this@PermissionDeinedActivity)
+                .setContentBackgroundResource(
+                    R
+                        .drawable.dialog_round,
+                )
+                .setContentHolder(viewHolder)
+                .setCancelable(false)
+                .setExpanded(false)
+                .setOnDismissListener {
+                    window.statusBarColor = originalStatusBarColor
+                }
+                .create()
 
         dialogPlus.show()
 
         val imageList = ArrayList<SlideModel>() // Create image list
 
         imageList.add(SlideModel(R.drawable.etc_permission))
-
 
         var imageSlider = customView.tutorialImage
 
@@ -88,10 +88,11 @@ class PermissionDeinedActivity : AppCompatActivity() {
      */
     private fun openAppSettings() {
         try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:$packageName")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
+            val intent =
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
             startActivity(intent)
         } catch (e: Exception) {
             // 설정 화면 열기 실패 시 일반 설정으로

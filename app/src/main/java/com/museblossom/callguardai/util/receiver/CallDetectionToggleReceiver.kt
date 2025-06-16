@@ -11,7 +11,6 @@ import androidx.core.app.NotificationCompat
 import com.museblossom.callguardai.R
 
 class CallDetectionToggleReceiver : BroadcastReceiver() {
-
     companion object {
         const val ACTION_ENABLE_CALL_DETECTION = "com.museblossom.callguardai.ENABLE_CALL_DETECTION"
         const val ACTION_DISABLE_CALL_DETECTION =
@@ -20,7 +19,10 @@ class CallDetectionToggleReceiver : BroadcastReceiver() {
         const val PERSISTENT_NOTIFICATION_ID = 1001
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         val action = intent.action
         Log.d("CallDetectionToggle", "Broadcast received: $action")
 
@@ -43,7 +45,10 @@ class CallDetectionToggleReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun updatePersistentNotification(context: Context, isEnabled: Boolean) {
+    private fun updatePersistentNotification(
+        context: Context,
+        isEnabled: Boolean,
+    ) {
         try {
             val statusText = if (isEnabled) "통화 감지 활성화됨" else "통화 감지 비활성화됨"
 
@@ -51,28 +56,33 @@ class CallDetectionToggleReceiver : BroadcastReceiver() {
             val toggleAction =
                 if (isEnabled) ACTION_DISABLE_CALL_DETECTION else ACTION_ENABLE_CALL_DETECTION
             val toggleText = if (isEnabled) "비활성화" else "활성화"
-            val toggleIntent = Intent(toggleAction).apply {
-                setPackage(context.packageName)
-            }
-            val togglePendingIntent = PendingIntent.getBroadcast(
-                context, 0, toggleIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val toggleIntent =
+                Intent(toggleAction).apply {
+                    setPackage(context.packageName)
+                }
+            val togglePendingIntent =
+                PendingIntent.getBroadcast(
+                    context,
+                    0,
+                    toggleIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
 
             val channelId = context.getString(R.string.channel_id__call_recording)
-            val notification = NotificationCompat.Builder(context, channelId)
-                .setContentTitle("CallGuardAI 보호 활성화")
-                .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
-                .setSmallIcon(R.drawable.app_logo)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setAutoCancel(false)
-                .setOngoing(true)
-                .addAction(
-                    R.drawable.app_logo,
-                    toggleText,
-                    togglePendingIntent
-                )
-                .build()
+            val notification =
+                NotificationCompat.Builder(context, channelId)
+                    .setContentTitle("CallGuardAI 보호 활성화")
+                    .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
+                    .setSmallIcon(R.drawable.app_logo)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setAutoCancel(false)
+                    .setOngoing(true)
+                    .addAction(
+                        R.drawable.app_logo,
+                        toggleText,
+                        togglePendingIntent,
+                    )
+                    .build()
 
             val notificationManager =
                 context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager

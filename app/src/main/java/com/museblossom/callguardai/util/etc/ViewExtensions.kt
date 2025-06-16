@@ -1,13 +1,8 @@
 package com.museblossom.callguardai.util.etc
 
-import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import android.view.View
-import android.widget.Button
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -20,7 +15,10 @@ import kotlinx.coroutines.launch
  * @param delayMs 클릭 후 다음 클릭까지 대기할 시간 (기본 1초)
  * @param action 클릭 시 실행할 액션
  */
-fun View.setOnSingleClickListener(delayMs: Long = 1000L, action: (view: View) -> Unit) {
+fun View.setOnSingleClickListener(
+    delayMs: Long = 1000L,
+    action: (view: View) -> Unit,
+) {
     var lastClickTime = 0L
 
     setOnClickListener { view ->
@@ -38,7 +36,10 @@ fun View.setOnSingleClickListener(delayMs: Long = 1000L, action: (view: View) ->
  * @param delayMs 비활성화 유지 시간 (기본 1초)
  * @param action 클릭 시 실행할 액션
  */
-fun View.setOnSingleClickListenerWithDisable(delayMs: Long = 1000L, action: (view: View) -> Unit) {
+fun View.setOnSingleClickListenerWithDisable(
+    delayMs: Long = 1000L,
+    action: (view: View) -> Unit,
+) {
     setOnClickListener { view ->
         // 버튼 비활성화
         isEnabled = false
@@ -116,7 +117,7 @@ fun View.setOnSingleClickListenerWithColorChange(
     normalColor: Int,
     pressedColor: Int,
     delayMs: Long = 1000L,
-    action: (view: View) -> Unit
+    action: (view: View) -> Unit,
 ) {
     var lastClickTime = 0L
     val originalBackground = background
@@ -147,18 +148,25 @@ fun View.setOnSingleClickListenerWithColorChange(
  * @param color 배경 색상
  * @param cornerRadius 모서리 둥글기 (dp)
  */
-fun View.setRoundedBackground(color: Int, cornerRadius: Float) {
-    val drawable = GradientDrawable().apply {
-        setColor(color)
-        this.cornerRadius = cornerRadius * context.resources.displayMetrics.density
-    }
+fun View.setRoundedBackground(
+    color: Int,
+    cornerRadius: Float,
+) {
+    val drawable =
+        GradientDrawable().apply {
+            setColor(color)
+            this.cornerRadius = cornerRadius * context.resources.displayMetrics.density
+        }
     background = drawable
 }
 
 /**
  * 둥근 모서리 배경 설정 (리소스 색상 사용)
  */
-fun View.setRoundedBackgroundRes(colorRes: Int, cornerRadius: Float) {
+fun View.setRoundedBackgroundRes(
+    colorRes: Int,
+    cornerRadius: Float,
+) {
     val color = ContextCompat.getColor(context, colorRes)
     setRoundedBackground(color, cornerRadius)
 }
@@ -166,7 +174,10 @@ fun View.setRoundedBackgroundRes(colorRes: Int, cornerRadius: Float) {
 /**
  * 둥근 모서리 배경 설정 (16진수 색상 사용)
  */
-fun View.setRoundedBackgroundHex(colorHex: String, cornerRadius: Float) {
+fun View.setRoundedBackgroundHex(
+    colorHex: String,
+    cornerRadius: Float,
+) {
     val color = Color.parseColor(colorHex)
     setRoundedBackground(color, cornerRadius)
 }
@@ -182,21 +193,25 @@ fun View.setRoundedBackgroundWithStroke(
     backgroundColor: Int,
     strokeColor: Int,
     strokeWidth: Float,
-    cornerRadius: Float
+    cornerRadius: Float,
 ) {
     val density = context.resources.displayMetrics.density
-    val drawable = GradientDrawable().apply {
-        setColor(backgroundColor)
-        setStroke((strokeWidth * density).toInt(), strokeColor)
-        this.cornerRadius = cornerRadius * density
-    }
+    val drawable =
+        GradientDrawable().apply {
+            setColor(backgroundColor)
+            setStroke((strokeWidth * density).toInt(), strokeColor)
+            this.cornerRadius = cornerRadius * density
+        }
     background = drawable
 }
 
 /**
  * 비활성화 상태일 때 색상 변경
  */
-fun View.setDisabledColor(disabledColor: Int, normalColor: Int) {
+fun View.setDisabledColor(
+    disabledColor: Int,
+    normalColor: Int,
+) {
     if (isEnabled) {
         setBackgroundColor(normalColor)
     } else {
@@ -227,7 +242,10 @@ fun View.fadeIn(duration: Long = 300L) {
 /**
  * 페이드 아웃 애니메이션
  */
-fun View.fadeOut(duration: Long = 300L, onComplete: (() -> Unit)? = null) {
+fun View.fadeOut(
+    duration: Long = 300L,
+    onComplete: (() -> Unit)? = null,
+) {
     animate()
         .alpha(0f)
         .setDuration(duration)

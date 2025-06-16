@@ -85,7 +85,7 @@ class CallGuardApplication : Application() {
         super.onCreate()
         instance = this
         AppCompatDelegate.setDefaultNightMode(
-            AppCompatDelegate.MODE_NIGHT_NO
+            AppCompatDelegate.MODE_NIGHT_NO,
         )
 
         // FCM 초기화

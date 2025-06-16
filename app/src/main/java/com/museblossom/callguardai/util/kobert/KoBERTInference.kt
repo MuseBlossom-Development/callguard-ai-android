@@ -7,9 +7,6 @@ import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
 import android.content.Context
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -32,7 +29,10 @@ class KoBERTInference(context: Context) {
 
     // 에셋 폴더에서 내부 저장소로 모델 복사
     @Throws(Exception::class)
-    private fun loadModelFromAssets(context: Context, assetName: String): String {
+    private fun loadModelFromAssets(
+        context: Context,
+        assetName: String,
+    ): String {
         val assetManager = context.assets
         val modelFile = File(context.filesDir, assetName)
         modelFile.parentFile?.mkdirs()
@@ -51,10 +51,12 @@ class KoBERTInference(context: Context) {
         return modelFile.absolutePath
     }
 
-
     // 추론 실행
     @Throws(OrtException::class)
-     fun infer(inputIds: List<Int>, attentionMask: List<Int>): String {
+    fun infer(
+        inputIds: List<Int>,
+        attentionMask: List<Int>,
+    ): String {
         // Convert inputIds and attentionMask to LongArrays for ONNX model
         val inputIdsArray = inputIds.map { it.toLong() }.toLongArray()
         val attentionMaskArray = attentionMask.map { it.toLong() }.toLongArray()
@@ -78,7 +80,6 @@ class KoBERTInference(context: Context) {
         return if (predictedLabel == 1) "phishing" else "non-phishing"
     }
 
-
     // 소프트맥스 함수
     private fun softmax(logits: FloatArray): FloatArray {
         var max = Float.NEGATIVE_INFINITY
@@ -88,7 +89,7 @@ class KoBERTInference(context: Context) {
 
         var sum = 0f
         for (i in logits.indices) {
-            logits[i] = Math.exp((logits[i] - max).toDouble()).toFloat()  // toFloat()로 변환
+            logits[i] = Math.exp((logits[i] - max).toDouble()).toFloat() // toFloat()로 변환
             sum += logits[i]
         }
 

@@ -31,7 +31,7 @@ class Recorder(
     private val detectCallback: (Boolean, Int) -> Unit,
     private val audioAnalysisRepository: AudioAnalysisRepositoryInterface,
     private var currentCDNUploadPath: String? = null,
-    private var currentCallUuid: String? = null
+    private var currentCallUuid: String? = null,
 ) {
     private val context: Context
     private var currentRecordingFile: String? = null
@@ -59,57 +59,72 @@ class Recorder(
         private const val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO // 모노
         private const val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT // 16-bit PCM
 
-        fun getFilePath(context: Context, uuid: String? = null): String {
+        fun getFilePath(
+            context: Context,
+            uuid: String? = null,
+        ): String {
             val baseName = if (uuid == null) System.currentTimeMillis().toString() else uuid
             return File(
                 context.filesDir,
-                "call_recording/${baseName}.wav"
+                "call_recording/$baseName.wav",
             ).absolutePath
         }
 
-        fun getKakaoFilePath(context: Context, uuid: String? = null): String {
+        fun getKakaoFilePath(
+            context: Context,
+            uuid: String? = null,
+        ): String {
             val baseName = if (uuid == null) System.currentTimeMillis().toString() else uuid
             return File(
                 context.filesDir,
-                "call_recording/${baseName}_Kakao_.wav"
+                "call_recording/${baseName}_Kakao_.wav",
             ).absolutePath
         }
 
         @JvmStatic
         fun getSavedAudioSource(context: Context): AudioSource {
-            val audioSource: AudioSource = AudioSource.valueOf(
-                PreferenceManager.getDefaultSharedPreferences(context)
-                    .getString("recordingSource", AudioSource.VOICE_CALL.name)!!
-            )
+            val audioSource: AudioSource =
+                AudioSource.valueOf(
+                    PreferenceManager.getDefaultSharedPreferences(context)
+                        .getString("recordingSource", AudioSource.VOICE_CALL.name)!!,
+                )
             return audioSource
         }
 
         @JvmStatic
-        fun setSavedAudioSource(context: Context, audioSource: AudioSource) {
+        fun setSavedAudioSource(
+            context: Context,
+            audioSource: AudioSource,
+        ) {
             PreferenceManager.getDefaultSharedPreferences(context).edit()
                 .putString("recordingSource", audioSource.name).apply()
         }
     }
 
-    private val updateTimeRunnable = object : Runnable {
-        override fun run() {
-            val elapsedSeconds = ((System.currentTimeMillis() - startTime) / 1000).toInt()
-            callback(elapsedSeconds)  // 경과 시간 콜백으로 전달
-            handler.postDelayed(this, 1000)  // 1초마다 반복
+    private val updateTimeRunnable =
+        object : Runnable {
+            override fun run() {
+                val elapsedSeconds = ((System.currentTimeMillis() - startTime) / 1000).toInt()
+                callback(elapsedSeconds) // 경과 시간 콜백으로 전달
+                handler.postDelayed(this, 1000) // 1초마다 반복
+            }
         }
-    }
 
     @UiThread
-    fun startRecording(delayToWaitForRecordingPreparation: Long = 0L, isIsOnlyWhisper: Boolean?) {
+    fun startRecording(
+        delayToWaitForRecordingPreparation: Long = 0L,
+        isIsOnlyWhisper: Boolean?,
+    ) {
         if (isRecording) return
 
         isRecording = true
         startTime = System.currentTimeMillis()
         handler.post(updateTimeRunnable)
 
-        val runnable = Runnable {
-            startDirectWavRecording() // Simplified to just use direct WAV recording
-        }
+        val runnable =
+            Runnable {
+                startDirectWavRecording() // Simplified to just use direct WAV recording
+            }
 
         if (delayToWaitForRecordingPreparation <= 0L) {
             runnable.run()
@@ -125,13 +140,14 @@ class Recorder(
     private fun startDirectWavRecording() {
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
 
-        audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            SAMPLE_RATE,
-            CHANNEL_CONFIG,
-            AUDIO_FORMAT,
-            bufferSize * 2
-        )
+        audioRecord =
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                SAMPLE_RATE,
+                CHANNEL_CONFIG,
+                AUDIO_FORMAT,
+                bufferSize * 2,
+            )
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
             throw RuntimeException("AudioRecord 초기화 실패")
@@ -146,9 +162,10 @@ class Recorder(
 
         audioRecord?.startRecording()
 
-        recordingThread = Thread {
-            writeWavFile(file, bufferSize)
-        }
+        recordingThread =
+            Thread {
+                writeWavFile(file, bufferSize)
+            }
         recordingThread?.start()
     }
 
@@ -203,7 +220,10 @@ class Recorder(
     /**
      * WAV 파일 직접 작성
      */
-    private fun writeWavFile(outputFile: File, bufferSize: Int) {
+    private fun writeWavFile(
+        outputFile: File,
+        bufferSize: Int,
+    ) {
         val buffer = ShortArray(bufferSize / 2)
         val audioData = mutableListOf<Short>()
 
@@ -219,7 +239,7 @@ class Recorder(
             if (audioData.isNotEmpty()) {
                 com.museblossom.callguardai.util.wave.encodeWaveFile(
                     outputFile,
-                    audioData.toShortArray()
+                    audioData.toShortArray(),
                 )
 
                 // 파일 시스템 동기화 강제 실행
@@ -231,7 +251,7 @@ class Recorder(
                         if (outputFile.exists() && outputFile.length() > 0L) {
                             Log.d(
                                 "녹음",
-                                "WAV 파일 저장 완료: ${outputFile.absolutePath}, 크기: ${audioData.size} 샘플"
+                                "WAV 파일 저장 완료: ${outputFile.absolutePath}, 크기: ${audioData.size} 샘플",
                             )
                         } else {
                             Log.e("녹음", "WAV 파일 저장 후 검증 실패: ${outputFile.absolutePath}")
@@ -241,7 +261,6 @@ class Recorder(
                     Log.w("녹음", "파일 동기화 확인 중 오류", e)
                 }
             }
-
         } catch (e: Exception) {
             Log.e("녹음", "WAV 파일 작성 중 오류", e)
         }
@@ -260,7 +279,7 @@ class Recorder(
             audioManager.setStreamVolume(
                 AudioManager.STREAM_VOICE_CALL,
                 audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
-                0
+                0,
             )
         } else {
             audioManager.mode = AudioManager.MODE_COMMUNICATION_REDIRECT
@@ -268,12 +287,15 @@ class Recorder(
             audioManager.setStreamVolume(
                 AudioManager.STREAM_VOICE_CALL,
                 audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL),
-                0
+                0,
             )
         }
     }
 
-    fun stopRecording(isUserStop: Boolean? = false, isIsOnlyWhisper: Boolean? = false) {
+    fun stopRecording(
+        isUserStop: Boolean? = false,
+        isIsOnlyWhisper: Boolean? = false,
+    ) {
         try {
             if (!isRecording) {
                 handler.removeCallbacks(updateTimeRunnable)
@@ -369,7 +391,10 @@ class Recorder(
     /**
      * 파일 분리 및 병렬 처리 준비 - I/O 최적화
      */
-    private fun prepareAndProcessFiles(originalFile: File, isIsOnlyWhisper: Boolean?) {
+    private fun prepareAndProcessFiles(
+        originalFile: File,
+        isIsOnlyWhisper: Boolean?,
+    ) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 // 파일 시스템 안정화를 위한 짧은 대기
@@ -387,16 +412,18 @@ class Recorder(
                     val deepVoiceFile = File("${basePath}_딥페이크분석.wav")
 
                     // 병렬 처리: 딥페이크 분석용 복사와 STT 처리 동시 시작
-                    val deepVoiceJob = launch {
-                        copyFileForDeepVoice(originalFile, deepVoiceFile)
-                        processDeepVoiceAnalysis(deepVoiceFile)
-                    }
+                    val deepVoiceJob =
+                        launch {
+                            copyFileForDeepVoice(originalFile, deepVoiceFile)
+                            processDeepVoiceAnalysis(deepVoiceFile)
+                        }
 
-                    val sttJob = launch {
-                        // 추가 대기 후 STT 처리
-                        kotlinx.coroutines.delay(50)
-                        processWhisperSTT(originalFile.absolutePath)
-                    }
+                    val sttJob =
+                        launch {
+                            // 추가 대기 후 STT 처리
+                            kotlinx.coroutines.delay(50)
+                            processWhisperSTT(originalFile.absolutePath)
+                        }
 
                     // 두 작업 완료 대기
                     deepVoiceJob.join()
@@ -408,7 +435,6 @@ class Recorder(
                         processWhisperSTT(originalFile.absolutePath)
                     }
                 }
-
             } catch (e: Exception) {
                 Log.e("녹음", "파일 분리 처리 중 오류", e)
             }
@@ -418,7 +444,10 @@ class Recorder(
     /**
      * 딥페이크 분석용 파일 복사
      */
-    private suspend fun copyFileForDeepVoice(originalFile: File, targetFile: File) {
+    private suspend fun copyFileForDeepVoice(
+        originalFile: File,
+        targetFile: File,
+    ) {
         withContext(Dispatchers.IO) {
             try {
                 // 원본 파일 존재 및 유효성 확인
@@ -447,7 +476,6 @@ class Recorder(
                 if (!targetFile.exists() || targetFile.length() == 0L) {
                     Log.e("녹음", "파일 복사 후 검증 실패: ${targetFile.absolutePath}")
                 }
-
             } catch (e: Exception) {
                 Log.e("녹음", "딥페이크 분석용 파일 복사 실패: ${e.message}", e)
             }
@@ -496,7 +524,7 @@ class Recorder(
                                 Log.e("딥보이스", "딥보이스 분석 업로드 실패: $error")
                                 // 기본값으로 콜백 호출
                                 detectCallback(false, 0)
-                            }
+                            },
                         )
 
                         // 분석 완료 후 임시 파일 정리
@@ -508,13 +536,12 @@ class Recorder(
                                 // else 분기 추가
                                 Log.w(
                                     "녹음",
-                                    "딥보이스 분석 파일이 존재하지 않아 삭제하지 않음: ${audioFile.absolutePath}"
+                                    "딥보이스 분석 파일이 존재하지 않아 삭제하지 않음: ${audioFile.absolutePath}",
                                 )
                             }
                         } catch (e: Exception) {
                             Log.w("녹음", "딥보이스 분석 파일 정리 실패", e)
                         }
-
                     } catch (e: Exception) {
                         Log.e("녹음", "딥보이스 CDN 업로드 중 오류", e)
                         detectCallback(false, 0)
@@ -545,7 +572,7 @@ class Recorder(
                 (recorderListener as EnhancedRecorderListener).onWaveFileReady(
                     file,
                     fileSize,
-                    isValid
+                    isValid,
                 )
             }
 
@@ -596,9 +623,8 @@ class Recorder(
                 return false
             }
 
-            Log.d("녹음", "WAV 파일 검증 성공: ${file.name} (${finalSize} bytes)")
+            Log.d("녹음", "WAV 파일 검증 성공: ${file.name} ($finalSize bytes)")
             return true
-
         } catch (e: Exception) {
             Log.e("녹음", "파일 검증 중 오류: ${e.message}", e)
             return false
@@ -640,7 +666,10 @@ class Recorder(
     /**
      * 통화 정보 업데이트 (UUID와 CDN 경로)
      */
-    fun updateRecorderMetadata(uuid: String, cdnUploadPath: String) {
+    fun updateRecorderMetadata(
+        uuid: String,
+        cdnUploadPath: String,
+    ) {
         currentCallUuid = uuid
         currentCDNUploadPath = cdnUploadPath
         Log.d("녹음", "Recorder 정보 업데이트 - UUID: $uuid, CDN 경로: $cdnUploadPath")
@@ -650,9 +679,10 @@ class Recorder(
     fun checkPermission(context: Context): Boolean {
         val activity = context as? Activity
         if (activity != null) {
-            val permissionCheck = context.checkSelfPermission(
-                "android.permission.RECORD_AUDIO"
-            )
+            val permissionCheck =
+                context.checkSelfPermission(
+                    "android.permission.RECORD_AUDIO",
+                )
             return permissionCheck == 0
         }
         return false

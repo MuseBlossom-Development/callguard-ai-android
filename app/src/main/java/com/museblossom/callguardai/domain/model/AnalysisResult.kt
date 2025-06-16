@@ -9,18 +9,18 @@ data class AnalysisResult(
     val probability: Int,
     val riskLevel: RiskLevel,
     val recommendation: String,
-    val timestamp: Long
+    val timestamp: Long,
 ) {
     enum class Type {
-        DEEP_VOICE,    // 딥보이스/합성음성 분석
-        PHISHING       // 피싱 텍스트 분석
+        DEEP_VOICE, // 딥보이스/합성음성 분석
+        PHISHING, // 피싱 텍스트 분석
     }
 
     enum class RiskLevel {
-        SAFE,          // 안전 (0-29%)
-        LOW,           // 낮은 위험 (30-59%)
-        MEDIUM,        // 중간 위험 (60-79%)
-        HIGH           // 높은 위험 (80-100%)
+        SAFE, // 안전 (0-29%)
+        LOW, // 낮은 위험 (30-59%)
+        MEDIUM, // 중간 위험 (60-79%)
+        HIGH, // 높은 위험 (80-100%)
     }
 
     /**
@@ -28,10 +28,10 @@ data class AnalysisResult(
      */
     fun getColorCode(): String {
         return when (riskLevel) {
-            RiskLevel.SAFE -> "#37aa00"      // 초록색
-            RiskLevel.LOW -> "#ffc000"       // 노란색
-            RiskLevel.MEDIUM -> "#ff8c00"    // 주황색
-            RiskLevel.HIGH -> "#c00000"      // 빨간색
+            RiskLevel.SAFE -> "#37aa00" // 초록색
+            RiskLevel.LOW -> "#ffc000" // 노란색
+            RiskLevel.MEDIUM -> "#ff8c00" // 주황색
+            RiskLevel.HIGH -> "#c00000" // 빨간색
         }
     }
 
@@ -84,12 +84,12 @@ data class ServerResponse(
     val statusCode: Int,
     val message: String,
     val now: String,
-    val body: Features
+    val body: Features,
 )
 
 /**
  * 서버 응답 피처 모델
  */
 data class Features(
-    val ai_probability: Int
+    val ai_probability: Int,
 )

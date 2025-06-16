@@ -16,7 +16,11 @@ interface EnhancedRecorderListener : RecorderListner {
      * @param fileSize 파일 크기 (bytes)
      * @param isValid 파일 유효성 여부
      */
-    fun onWaveFileReady(file: File, fileSize: Long, isValid: Boolean) {
+    fun onWaveFileReady(
+        file: File,
+        fileSize: Long,
+        isValid: Boolean,
+    ) {
         // 기본 구현 - 기존 콜백 호출
         onWaveConvertComplete(file.absolutePath)
     }

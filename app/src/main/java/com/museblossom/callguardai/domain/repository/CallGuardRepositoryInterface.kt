@@ -9,7 +9,6 @@ import java.io.File
  * 책임: CallGuard AI 서버와의 통신 기능 추상화
  */
 interface CallGuardRepositoryInterface {
-
     /**
      * STT 모델 다운로드 링크 요청
      */
@@ -39,12 +38,18 @@ interface CallGuardRepositoryInterface {
     /**
      * CDN에 파일 업로드 (오디오/텍스트 파일 모두 지원)
      */
-    suspend fun uploadAudioToCDN(uploadUrl: String, audioFile: File): Result<Unit>
+    suspend fun uploadAudioToCDN(
+        uploadUrl: String,
+        audioFile: File,
+    ): Result<Unit>
 
     /**
      * 보이스피싱 텍스트 전송
      */
-    suspend fun sendVoiceText(uuid: String, callText: String): Result<Unit>
+    suspend fun sendVoiceText(
+        uuid: String,
+        callText: String,
+    ): Result<Unit>
 
     /**
      * JWT 토큰 저장
@@ -73,7 +78,7 @@ interface CallGuardRepositoryInterface {
         url: String,
         outputFile: File,
         onProgress: MutableStateFlow<Double>? = null,
-        expectedMD5: String? = null
+        expectedMD5: String? = null,
     ): Result<File>
 
     /**
@@ -90,6 +95,6 @@ interface CallGuardRepositoryInterface {
     suspend fun getTerms(
         termsType: String,
         lang: String = "kr",
-        version: Int? = null
+        version: Int? = null,
     ): Result<String>
 }

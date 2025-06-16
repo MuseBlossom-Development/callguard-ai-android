@@ -61,7 +61,10 @@ fun decodeWaveFile(file: File): FloatArray {
     }
 }
 
-fun encodeWaveFile(file: File, data: ShortArray) {
+fun encodeWaveFile(
+    file: File,
+    data: ShortArray,
+) {
     file.outputStream().use {
         it.write(headerBytes(data.size * 2))
         val buffer = ByteBuffer.allocate(data.size * 2)

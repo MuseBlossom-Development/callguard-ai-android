@@ -7,14 +7,16 @@ import java.io.File
  * 책임: CDN 업로드 및 네트워크 상태 관리
  */
 interface AudioAnalysisRepositoryInterface {
-
     /**
      * 딥보이스 분석을 위한 CDN 업로드
      * @param audioFile 분석할 오디오 파일
      * @param uploadUrl CDN 업로드 URL
      * @return 업로드 성공 여부 (분석 결과는 FCM으로 수신)
      */
-    suspend fun uploadForDeepVoiceAnalysis(audioFile: File, uploadUrl: String): Result<Unit>
+    suspend fun uploadForDeepVoiceAnalysis(
+        audioFile: File,
+        uploadUrl: String,
+    ): Result<Unit>
 
     /**
      * 딥보이스 분석 콜백 방식 (CDN 업로드)
@@ -23,7 +25,7 @@ interface AudioAnalysisRepositoryInterface {
         audioFile: File,
         uploadUrl: String,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
     )
 
     /**

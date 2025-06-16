@@ -14,11 +14,11 @@ import java.io.File
  */
 class AnalyzeAudioUseCase(
     private val audioAnalysisRepository: AudioAnalysisRepositoryInterface,
-    private val dispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     companion object {
         private const val TAG = "AnalyzeAudioUseCase"
-        
+
         // 위험도 임계값
         private const val HIGH_RISK_THRESHOLD = 80
         private const val MEDIUM_RISK_THRESHOLD = 60
@@ -31,29 +31,32 @@ class AnalyzeAudioUseCase(
      * @param uploadUrl CDN 업로드 URL
      * @return 업로드 성공 여부 (분석 결과는 FCM으로 수신)
      */
-    suspend fun uploadForDeepVoiceAnalysis(audioFile: File, uploadUrl: String): Result<Unit> =
+    suspend fun uploadForDeepVoiceAnalysis(
+        audioFile: File,
+        uploadUrl: String,
+    ): Result<Unit> =
         withContext(dispatcher) {
-        try {
-            Log.d(TAG, "딥보이스 분석을 위한 CDN 업로드 시작: ${audioFile.name}")
-            
-            if (!audioFile.exists()) {
-                return@withContext Result.failure(Exception("오디오 파일이 존재하지 않습니다: ${audioFile.path}"))
-            }
+            try {
+                Log.d(TAG, "딥보이스 분석을 위한 CDN 업로드 시작: ${audioFile.name}")
 
-            val result = audioAnalysisRepository.uploadForDeepVoiceAnalysis(audioFile, uploadUrl)
+                if (!audioFile.exists()) {
+                    return@withContext Result.failure(Exception("오디오 파일이 존재하지 않습니다: ${audioFile.path}"))
+                }
 
-            if (result.isSuccess) {
-                Log.d(TAG, "딥보이스 분석용 파일 업로드 성공 - FCM 결과 대기")
-                Result.success(Unit)
-            } else {
-                Log.e(TAG, "딥보이스 분석용 파일 업로드 실패: ${result.exceptionOrNull()?.message}")
-                result
+                val result = audioAnalysisRepository.uploadForDeepVoiceAnalysis(audioFile, uploadUrl)
+
+                if (result.isSuccess) {
+                    Log.d(TAG, "딥보이스 분석용 파일 업로드 성공 - FCM 결과 대기")
+                    Result.success(Unit)
+                } else {
+                    Log.e(TAG, "딥보이스 분석용 파일 업로드 실패: ${result.exceptionOrNull()?.message}")
+                    result
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "딥보이스 분석 업로드 중 예상치 못한 오류", e)
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "딥보이스 분석 업로드 중 예상치 못한 오류", e)
-            Result.failure(e)
         }
-    }
 
     /**
      * 딥보이스 분석 콜백 방식 (CDN 업로드)
@@ -66,7 +69,7 @@ class AnalyzeAudioUseCase(
         audioFile: File,
         uploadUrl: String,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
     ) {
         Log.d(TAG, "딥보이스 분석 콜백 방식 시작: ${audioFile.name}")
 
@@ -80,7 +83,7 @@ class AnalyzeAudioUseCase(
             onError = { error ->
                 Log.e(TAG, "딥보이스 분석 업로드 실패: $error")
                 onError(error)
-            }
+            },
         )
     }
 
@@ -88,26 +91,28 @@ class AnalyzeAudioUseCase(
      * 분석 결과 객체 생성
      */
     fun createAnalysisResultFromFCM(probability: Int): AnalysisResult {
-        val riskLevel = when {
-            probability >= HIGH_RISK_THRESHOLD -> AnalysisResult.RiskLevel.HIGH
-            probability >= MEDIUM_RISK_THRESHOLD -> AnalysisResult.RiskLevel.MEDIUM
-            probability >= LOW_RISK_THRESHOLD -> AnalysisResult.RiskLevel.LOW
-            else -> AnalysisResult.RiskLevel.SAFE
-        }
-        
-        val recommendation = when (riskLevel) {
-            AnalysisResult.RiskLevel.HIGH -> "즉시 통화를 종료하세요!"
-            AnalysisResult.RiskLevel.MEDIUM -> "주의가 필요합니다. 통화 내용을 신중히 판단하세요."
-            AnalysisResult.RiskLevel.LOW -> "주의하여 통화를 진행하세요."
-            AnalysisResult.RiskLevel.SAFE -> "안전한 통화로 판단됩니다."
-        }
-        
+        val riskLevel =
+            when {
+                probability >= HIGH_RISK_THRESHOLD -> AnalysisResult.RiskLevel.HIGH
+                probability >= MEDIUM_RISK_THRESHOLD -> AnalysisResult.RiskLevel.MEDIUM
+                probability >= LOW_RISK_THRESHOLD -> AnalysisResult.RiskLevel.LOW
+                else -> AnalysisResult.RiskLevel.SAFE
+            }
+
+        val recommendation =
+            when (riskLevel) {
+                AnalysisResult.RiskLevel.HIGH -> "즉시 통화를 종료하세요!"
+                AnalysisResult.RiskLevel.MEDIUM -> "주의가 필요합니다. 통화 내용을 신중히 판단하세요."
+                AnalysisResult.RiskLevel.LOW -> "주의하여 통화를 진행하세요."
+                AnalysisResult.RiskLevel.SAFE -> "안전한 통화로 판단됩니다."
+            }
+
         return AnalysisResult(
             type = AnalysisResult.Type.DEEP_VOICE,
             probability = probability,
             riskLevel = riskLevel,
             recommendation = recommendation,
-            timestamp = System.currentTimeMillis()
+            timestamp = System.currentTimeMillis(),
         )
     }
 
@@ -138,6 +143,6 @@ class AnalyzeAudioUseCase(
      */
     fun isWarningLevel(analysisResult: AnalysisResult): Boolean {
         return analysisResult.riskLevel == AnalysisResult.RiskLevel.MEDIUM ||
-                analysisResult.riskLevel == AnalysisResult.RiskLevel.HIGH
+            analysisResult.riskLevel == AnalysisResult.RiskLevel.HIGH
     }
 }

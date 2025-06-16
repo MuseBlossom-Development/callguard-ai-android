@@ -18,19 +18,18 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
-
     /**
      * Room 데이터베이스 제공
      */
     @Provides
     @Singleton
     fun provideCallGuardDatabase(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
     ): CallGuardDatabase {
         return Room.databaseBuilder(
             context.applicationContext,
             CallGuardDatabase::class.java,
-            "callguard_database"
+            "callguard_database",
         )
             .fallbackToDestructiveMigration() // 개발 단계에서만 사용
             .build()

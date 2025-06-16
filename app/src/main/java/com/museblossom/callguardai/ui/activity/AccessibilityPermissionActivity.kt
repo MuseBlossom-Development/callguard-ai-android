@@ -1,10 +1,13 @@
 package com.museblossom.callguardai.ui.activity
 
 import android.Manifest
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -14,27 +17,20 @@ import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
 import androidx.lifecycle.lifecycleScope
+import com.museblossom.callguardai.R
+import com.museblossom.callguardai.util.etc.MyAccessibilityService
+import com.museblossom.callguardai.util.etc.setOnSingleClickListener
+import com.museblossom.callguardai.util.receiver.CallDetectionToggleReceiver
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
-import android.app.NotificationManager
-import android.app.PendingIntent
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import android.content.BroadcastReceiver
-import android.content.IntentFilter
-import android.content.pm.PackageManager
-import com.museblossom.callguardai.R
-import com.museblossom.callguardai.util.etc.MyAccessibilityService
-import com.museblossom.callguardai.util.etc.setOnSingleClickListener
-import com.museblossom.callguardai.util.receiver.CallDetectionToggleReceiver
 
 class AccessibilityPermissionActivity : AppCompatActivity() {
-
     private var permissionCheckJob: Job? = null
     private var isAccessibilityCheckInProgress = false
 
@@ -64,12 +60,15 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
 
     private fun showAccessibilityGuideDialog() {
         var countdown = 3
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("마지막 단계입니다! 🎉")
-            .setMessage("거의 다 완료되었습니다!\n\n다음 화면에서:\n1. '설치된 앱' 목록에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택 후 스위치 켜기\n3. 자동으로 완료됩니다!\n\n${countdown}초 후 자동으로 이동합니다...")
-            .setPositiveButton("지금 바로 가기", null)
-            .setCancelable(false)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this)
+                .setTitle("마지막 단계입니다! 🎉")
+                .setMessage(
+                    "거의 다 완료되었습니다!\n\n다음 화면에서:\n1. '설치된 앱' 목록에서 'CallGuardAI' 찾기\n2. CallGuardAI 선택 후 스위치 켜기\n3. 자동으로 완료됩니다!\n\n${countdown}초 후 자동으로 이동합니다...",
+                )
+                .setPositiveButton("지금 바로 가기", null)
+                .setCancelable(false)
+                .create()
 
         dialog.show()
 
@@ -110,20 +109,22 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             }
             isAccessibilityCheckInProgress = true
 
-            val componentName = ComponentName(
-                packageName,
-                "com.museblossom.callguardai.util.etc.MyAccessibilityService"
-            )
+            val componentName =
+                ComponentName(
+                    packageName,
+                    "com.museblossom.callguardai.util.etc.MyAccessibilityService",
+                )
 
             // 제조사별 접근성 설정 시도
-            val manufacturerIntents = listOf(
-                // 삼성
-                Intent("com.samsung.accessibility.installed_service"),
-                // LG
-                Intent("com.lge.settings.ACCESSIBILITY_SETTINGS"),
-                // 샤오미
-                Intent("com.android.settings.ACCESSIBILITY_SETTINGS_ACTIVITY")
-            )
+            val manufacturerIntents =
+                listOf(
+                    // 삼성
+                    Intent("com.samsung.accessibility.installed_service"),
+                    // LG
+                    Intent("com.lge.settings.ACCESSIBILITY_SETTINGS"),
+                    // 샤오미
+                    Intent("com.android.settings.ACCESSIBILITY_SETTINGS_ACTIVITY"),
+                )
 
             for (intent in manufacturerIntents) {
                 try {
@@ -159,18 +160,17 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             Toast.makeText(
                 this,
                 "설치된 앱 → CallGuardAI → 스위치 켜기",
-                Toast.LENGTH_LONG
+                Toast.LENGTH_LONG,
             ).show()
 
             // 권한 체크 시작
             startAccessibilityPermissionCheck()
-
         } catch (e: Exception) {
             Log.e("AccessibilityPermission", "접근성 설정 화면 열기 실패", e)
             Toast.makeText(
                 this,
                 "설정 > 접근성 > 설치된 앱에서 CallGuardAI를 활성화해주세요",
-                Toast.LENGTH_LONG
+                Toast.LENGTH_LONG,
             ).show()
         }
     }
@@ -182,57 +182,59 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
         Log.d("AccessibilityPermission", "접근성 권한 자동 감지 시작")
 
         // 새로운 권한 체크 작업 시작
-        permissionCheckJob = lifecycleScope.launch {
-            var checkCount = 0
-            while (isActive) {
-                delay(100) // 0.1초마다 체크
-                checkCount++
+        permissionCheckJob =
+            lifecycleScope.launch {
+                var checkCount = 0
+                while (isActive) {
+                    delay(100) // 0.1초마다 체크
+                    checkCount++
 
-                val hasAccessibilityPermission = isAccessibilityServiceEnabled()
+                    val hasAccessibilityPermission = isAccessibilityServiceEnabled()
 
-                if (hasAccessibilityPermission) {
-                    Log.d("AccessibilityPermission", "접근성 권한 자동 감지됨! (${checkCount * 0.1}초 후)")
+                    if (hasAccessibilityPermission) {
+                        Log.d("AccessibilityPermission", "접근성 권한 자동 감지됨! (${checkCount * 0.1}초 후)")
 
-                    // UI 스레드에서 바로 완료 처리
-                    withContext(Dispatchers.Main) {
-                        Log.d("AccessibilityPermission", "접근성 권한 감지 완료 - 바로 완료 처리")
-                        finishWithSuccess()
-                    }
-                    break
-                }
-
-                // 5초마다 상태 로그 출력
-                if (checkCount % 50 == 0) { // 50 * 0.1초 = 5초
-                    Log.d("AccessibilityPermission", "접근성 권한 대기 중... (${checkCount * 0.1}초 경과)")
-                }
-
-                // 2분 후에는 체크 중단
-                if (checkCount >= 1200) { // 1200 * 0.1초 = 120초
-                    Log.w("AccessibilityPermission", "접근성 권한 자동 감지 타임아웃 (2분)")
-
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@AccessibilityPermissionActivity,
-                            "접근성 권한 설정이 오래 걸리고 있습니다. 설정을 완료해주세요.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        // UI 스레드에서 바로 완료 처리
+                        withContext(Dispatchers.Main) {
+                            Log.d("AccessibilityPermission", "접근성 권한 감지 완료 - 바로 완료 처리")
+                            finishWithSuccess()
+                        }
+                        break
                     }
 
-                    // 5초 대기 후 체크 재시작
-                    delay(5000)
-                    checkCount = 0
-                    Log.d("AccessibilityPermission", "접근성 권한 체크 재시작")
-                    continue
+                    // 5초마다 상태 로그 출력
+                    if (checkCount % 50 == 0) { // 50 * 0.1초 = 5초
+                        Log.d("AccessibilityPermission", "접근성 권한 대기 중... (${checkCount * 0.1}초 경과)")
+                    }
+
+                    // 2분 후에는 체크 중단
+                    if (checkCount >= 1200) { // 1200 * 0.1초 = 120초
+                        Log.w("AccessibilityPermission", "접근성 권한 자동 감지 타임아웃 (2분)")
+
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@AccessibilityPermissionActivity,
+                                "접근성 권한 설정이 오래 걸리고 있습니다. 설정을 완료해주세요.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+
+                        // 5초 대기 후 체크 재시작
+                        delay(5000)
+                        checkCount = 0
+                        Log.d("AccessibilityPermission", "접근성 권한 체크 재시작")
+                        continue
+                    }
                 }
             }
-        }
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val enabledServices = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
+        val enabledServices =
+            Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
 
         val colonSplitter = TextUtils.SimpleStringSplitter(':')
         colonSplitter.setString(enabledServices)
@@ -241,9 +243,9 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             if (componentName.equals(
                     ComponentName(
                         this,
-                        com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+                        com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
                     ).flattenToString(),
-                    ignoreCase = true
+                    ignoreCase = true,
                 )
             ) {
                 return true
@@ -262,7 +264,7 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
         Toast.makeText(
             this,
             "🎉 설정이 완료되었습니다! CallGuardAI가 백그라운드에서 동작합니다.",
-            Toast.LENGTH_LONG
+            Toast.LENGTH_LONG,
         ).show()
 
         // 홈 화면으로 이동
@@ -270,10 +272,11 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
 //            delay(1000) // 1초 후 홈 화면으로
 
             try {
-                val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
+                val homeIntent =
+                    Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
                 startActivity(homeIntent)
                 Log.d("AccessibilityPermission", "홈 화면으로 이동 완료")
             } catch (e: Exception) {
@@ -297,28 +300,33 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             val toggleAction =
                 if (isCallDetectionEnabled) CallDetectionToggleReceiver.ACTION_DISABLE_CALL_DETECTION else CallDetectionToggleReceiver.ACTION_ENABLE_CALL_DETECTION
             val toggleText = if (isCallDetectionEnabled) "비활성화" else "활성화"
-            val toggleIntent = Intent(toggleAction).apply {
-                setPackage(packageName)
-            }
-            val togglePendingIntent = PendingIntent.getBroadcast(
-                this, 0, toggleIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val toggleIntent =
+                Intent(toggleAction).apply {
+                    setPackage(packageName)
+                }
+            val togglePendingIntent =
+                PendingIntent.getBroadcast(
+                    this,
+                    0,
+                    toggleIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
 
             val channelId = getString(R.string.channel_id__call_recording)
-            val notification = NotificationCompat.Builder(this, channelId)
-                .setContentTitle("CallGuardAI 보호")
-                .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
-                .setSmallIcon(R.drawable.app_logo)
-                .setPriority(NotificationCompat.PRIORITY_LOW) // 낮은 우선순위로 조용히 표시
-                .setAutoCancel(false) // 삭제 불가능
-                .setOngoing(true) // 지속적 표시
-                .addAction(
-                    R.drawable.app_logo,
-                    toggleText,
-                    togglePendingIntent
-                )
-                .build()
+            val notification =
+                NotificationCompat.Builder(this, channelId)
+                    .setContentTitle("CallGuardAI 보호")
+                    .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
+                    .setSmallIcon(R.drawable.app_logo)
+                    .setPriority(NotificationCompat.PRIORITY_LOW) // 낮은 우선순위로 조용히 표시
+                    .setAutoCancel(false) // 삭제 불가능
+                    .setOngoing(true) // 지속적 표시
+                    .addAction(
+                        R.drawable.app_logo,
+                        toggleText,
+                        togglePendingIntent,
+                    )
+                    .build()
 
             // Check notification permission for Android 13+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -334,7 +342,7 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.notify(
                 CallDetectionToggleReceiver.PERSISTENT_NOTIFICATION_ID,
-                notification
+                notification,
             )
 
             Log.d("AccessibilityPermission", "상시 알림 표시됨 - 통화감지: $isCallDetectionEnabled")
@@ -363,7 +371,7 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
     private fun getCallDetectionEnabled(): Boolean {
         return sharedPreferences.getBoolean(
             CallDetectionToggleReceiver.KEY_CALL_DETECTION_ENABLED,
-            true
+            true,
         ) // 기본값: 활성화
     }
 

@@ -13,7 +13,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class BenchmarkActivity : AppCompatActivity() {
-
     private var whisperContext: WhisperContext? = null
     private lateinit var resultTextView: TextView
     private lateinit var memoryBenchButton: Button
@@ -64,23 +63,24 @@ class BenchmarkActivity : AppCompatActivity() {
                     val modelFolderList = assets.list("models")
                     Log.d(
                         "BenchmarkActivity",
-                        "assets/models 폴더 내용: ${modelFolderList?.joinToString(", ")}"
+                        "assets/models 폴더 내용: ${modelFolderList?.joinToString(", ")}",
                     )
                 } catch (e: Exception) {
                     Log.e("BenchmarkActivity", "assets 폴더 구조 확인 실패", e)
                 }
 
-                val assetExists = try {
-                    Log.d("BenchmarkActivity", "assets 파일 확인 시도: $assetModelPath")
-                    assets.open(assetModelPath).use { inputStream ->
-                        val size = inputStream.available()
-                        Log.d("BenchmarkActivity", "assets 파일 크기: $size bytes")
-                        size > 0
+                val assetExists =
+                    try {
+                        Log.d("BenchmarkActivity", "assets 파일 확인 시도: $assetModelPath")
+                        assets.open(assetModelPath).use { inputStream ->
+                            val size = inputStream.available()
+                            Log.d("BenchmarkActivity", "assets 파일 크기: $size bytes")
+                            size > 0
+                        }
+                    } catch (e: Exception) {
+                        Log.e("BenchmarkActivity", "assets 파일 확인 실패: $assetModelPath", e)
+                        false
                     }
-                } catch (e: Exception) {
-                    Log.e("BenchmarkActivity", "assets 파일 확인 실패: $assetModelPath", e)
-                    false
-                }
 
                 if (assetExists) {
                     // assets 모델 사용
@@ -93,7 +93,6 @@ class BenchmarkActivity : AppCompatActivity() {
                     Log.i("BenchmarkActivity", "Whisper Context 생성 시작... (assets 모델)")
                     whisperContext = WhisperContext.createContextFromAsset(assets, assetModelPath)
                     Log.i("BenchmarkActivity", "Whisper Context 생성 완료 (assets 모델)")
-
                 } else if (modelFile.exists() && modelFile.length() > 0L && modelFile.canRead()) {
                     // 폴백: filesDir 모델 사용
                     Log.i("BenchmarkActivity", "assets 모델이 없어서 filesDir 모델 사용")
@@ -108,7 +107,6 @@ class BenchmarkActivity : AppCompatActivity() {
                     Log.i("BenchmarkActivity", "Whisper Context 생성 시작... (filesDir 모델)")
                     whisperContext = WhisperContext.createContextFromFile(modelPath)
                     Log.i("BenchmarkActivity", "Whisper Context 생성 완료 (filesDir 모델)")
-
                 } else {
                     val errorMsg = "모델 파일을 찾을 수 없습니다. assets/$assetModelPath 또는 $modelPath 확인 필요"
                     resultTextView.text = "오류: $errorMsg"
@@ -124,7 +122,6 @@ class BenchmarkActivity : AppCompatActivity() {
 
                 // 자동으로 벤치마크 시작
                 runAutomaticBenchmarks()
-
             } catch (e: OutOfMemoryError) {
                 val errorMsg = "메모리 부족으로 모델 로딩 실패"
                 resultTextView.text = "오류: $errorMsg"
@@ -156,9 +153,11 @@ class BenchmarkActivity : AppCompatActivity() {
                 val result = whisperContext?.benchMemory(threads)
 
                 resultTextView.text = "=== 메모리 벤치마크 결과 ===\n$result"
-                Log.d("BenchmarkActivity", "메모리 벤치마크 완료 \n" +
-                        "$result")
-
+                Log.d(
+                    "BenchmarkActivity",
+                    "메모리 벤치마크 완료 \n" +
+                        "$result",
+                )
             } catch (e: Exception) {
                 resultTextView.text = "벤치마크 실패: ${e.message}"
                 Log.e("BenchmarkActivity", "메모리 벤치마크 실패", e)
@@ -180,10 +179,11 @@ class BenchmarkActivity : AppCompatActivity() {
                 val result = whisperContext?.benchGgmlMulMat(threads)
 
                 resultTextView.text = "=== 행렬곱 벤치마크 결과 ===\n$result"
-                Log.d("BenchmarkActivity", "행렬곱 벤치마크 완료\n" +
-                        "$result"
+                Log.d(
+                    "BenchmarkActivity",
+                    "행렬곱 벤치마크 완료\n" +
+                        "$result",
                 )
-
             } catch (e: Exception) {
                 resultTextView.text = "벤치마크 실패: ${e.message}"
                 Log.e("BenchmarkActivity", "행렬곱 벤치마크 실패", e)
@@ -218,7 +218,8 @@ class BenchmarkActivity : AppCompatActivity() {
                 Log.d("BenchmarkActivity", matResult ?: "결과 없음")
 
                 // 결과 표시
-                resultTextView.text = """
+                resultTextView.text =
+                    """
                     ✅ 벤치마크 완료! (${benchmarkThreads}스레드 고정)
                     
                     📊 디바이스 정보:
@@ -233,10 +234,9 @@ class BenchmarkActivity : AppCompatActivity() {
                     $matResult
                     
                     💡 whisper.android와 동일한 6스레드로 측정
-                """.trimIndent()
+                    """.trimIndent()
 
                 Log.d("BenchmarkActivity", "=== 벤치마크 완료 (비교용 ${benchmarkThreads}스레드) ===")
-
             } catch (e: Exception) {
                 resultTextView.text = "벤치마크 실패: ${e.message}"
                 Log.e("BenchmarkActivity", "자동 벤치마크 실패", e)
@@ -249,12 +249,13 @@ class BenchmarkActivity : AppCompatActivity() {
             Log.i("BenchmarkActivity", "=== 시스템 능력 분석 ===")
 
             // 안전하게 시스템 정보 가져오기
-            val systemInfo = try {
-                WhisperContext.getSystemInfo()
-            } catch (e: Exception) {
-                Log.e("BenchmarkActivity", "시스템 정보 가져오기 실패", e)
-                "시스템 정보를 가져올 수 없습니다"
-            }
+            val systemInfo =
+                try {
+                    WhisperContext.getSystemInfo()
+                } catch (e: Exception) {
+                    Log.e("BenchmarkActivity", "시스템 정보 가져오기 실패", e)
+                    "시스템 정보를 가져올 수 없습니다"
+                }
 
             Log.i("BenchmarkActivity", "System Info: $systemInfo")
 
@@ -278,7 +279,7 @@ class BenchmarkActivity : AppCompatActivity() {
                 if (hasAvx || hasAvx2 || hasAvx512) {
                     Log.i(
                         "BenchmarkActivity",
-                        "✅ AVX 지원: AVX=$hasAvx, AVX2=$hasAvx2, AVX512=$hasAvx512"
+                        "✅ AVX 지원: AVX=$hasAvx, AVX2=$hasAvx2, AVX512=$hasAvx512",
                     )
                 }
 
@@ -290,15 +291,16 @@ class BenchmarkActivity : AppCompatActivity() {
                 val hasClBlast = systemInfo.contains("CLBLAST = 1") || systemInfo.contains("OpenCL")
                 Log.i(
                     "BenchmarkActivity",
-                    "✅ CLBlast (OpenCL): ${if (hasClBlast) "사용" else "사용 안함"}"
+                    "✅ CLBlast (OpenCL): ${if (hasClBlast) "사용" else "사용 안함"}",
                 )
 
                 // 스레드 수 확인
-                val threadInfo = try {
-                    systemInfo.substringAfter("n_threads = ").substringBefore(" ")
-                } catch (e: Exception) {
-                    "알 수 없음"
-                }
+                val threadInfo =
+                    try {
+                        systemInfo.substringAfter("n_threads = ").substringBefore(" ")
+                    } catch (e: Exception) {
+                        "알 수 없음"
+                    }
                 Log.i("BenchmarkActivity", "✅ 사용 가능한 스레드 수: $threadInfo")
 
                 // CPU 아키텍처별 최적화 요약
@@ -311,7 +313,6 @@ class BenchmarkActivity : AppCompatActivity() {
             }
 
             Log.i("BenchmarkActivity", "=== 시스템 능력 분석 완료 ===")
-
         } catch (e: Exception) {
             Log.e("BenchmarkActivity", "시스템 정보 분석 실패", e)
         }

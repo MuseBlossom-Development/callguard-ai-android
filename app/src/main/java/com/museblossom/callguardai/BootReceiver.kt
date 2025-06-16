@@ -10,7 +10,6 @@ import android.util.Log
  * 책임: 디바이스 부팅 후 CallGuard AI 서비스 자동 활성화
  */
 class BootReceiver : BroadcastReceiver() {
-
     companion object {
         private const val TAG = "BootReceiver"
         private const val PREFS_NAME = "callguard_secure_prefs"
@@ -18,7 +17,10 @@ class BootReceiver : BroadcastReceiver() {
         private const val KEY_IS_FIRST_RUN = "is_first_run"
     }
 
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED -> {
                 Log.d(TAG, "디바이스 부팅 완료 감지됨")

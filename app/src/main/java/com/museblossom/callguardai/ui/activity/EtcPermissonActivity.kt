@@ -1,14 +1,8 @@
 package com.museblossom.callguardai.ui.activity
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import androidx.core.app.NotificationCompat
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -32,13 +26,12 @@ import com.museblossom.callguardai.databinding.PermissionOverlayDialogBinding
 import com.museblossom.callguardai.util.etc.setOnSingleClickListener
 import com.orhanobut.dialogplus.DialogPlus
 import com.orhanobut.dialogplus.ViewHolder
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
 
 class EtcPermissonActivity : AppCompatActivity() {
     private var isRetryPermission = false
@@ -63,7 +56,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         if (!isFinishing && !isChangingConfigurations) { // 액티비티가 유효할 때만 실행
             Log.d(
                 "Permission",
-                "권한 설정 완료, 백그라운드 서비스로 동작합니다."
+                "권한 설정 완료, 백그라운드 서비스로 동작합니다.",
             )
 
             // 설정 완료 메시지 표시
@@ -95,10 +88,11 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "리줌 퍼미션")
 
         // 접근성 권한이 활성화되어 있다면 완료 처리
-        val hasAccessibility = isAccessibilityServiceEnabled(
-            this,
-            com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
-        )
+        val hasAccessibility =
+            isAccessibilityServiceEnabled(
+                this,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
+            )
         Log.d("Permission", "onResume - 접근성 권한 상태: $hasAccessibility")
 
         if (hasAccessibility) {
@@ -116,11 +110,12 @@ class EtcPermissonActivity : AppCompatActivity() {
         }
 
         // 오버레이 권한 상태 체크
-        val hasOverlay = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.canDrawOverlays(this)
-        } else {
-            true
-        }
+        val hasOverlay =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Settings.canDrawOverlays(this)
+            } else {
+                true
+            }
         Log.d("Permission", "onResume - 오버레이 권한 상태: $hasOverlay")
 
         // 오버레이 권한이 없다면 오버레이 권한 체크 계속
@@ -167,33 +162,34 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "===== onPause 호출 =====")
     }
 
-    private val permission = object : PermissionListener {
-        override fun onPermissionGranted() {
-            Log.d("Permission", "===== 기본 권한 승인됨 =====")
-            // 플래그 리셋
-            isBasicPermissionInProgress = false
-            // 기본 권한 획득 후 배터리 최적화 체크
-            Log.d("Permission", "기본 권한 승인 후 배터리 최적화 체크 시작")
-            checkBatteryOptimization()
-        }
-
-        override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
-            Log.d("Permission", "===== 기본 권한 거부됨 =====")
-            // 플래그 리셋
-            isRetryPermission = true
-            isBasicPermissionInProgress = false
-            Log.d("Permission", "테드_권한 거부 : $deniedPermissions")
-            Log.d("Permission", "테드_버전 여부 : ${Build.VERSION.SDK_INT}")
-
-            // Android 14+에서는 shouldShowRequestPermissionRationale이 제대로 작동하지 않으므로
-            // 첫 번째 거부에서는 항상 재요청 다이얼로그를 표시
-            Log.d("Permission", "권한 거부 - 재요청 다이얼로그 표시")
-            if(dialogPlus.isShowing){
-                dialogPlus.dismiss()
+    private val permission =
+        object : PermissionListener {
+            override fun onPermissionGranted() {
+                Log.d("Permission", "===== 기본 권한 승인됨 =====")
+                // 플래그 리셋
+                isBasicPermissionInProgress = false
+                // 기본 권한 획득 후 배터리 최적화 체크
+                Log.d("Permission", "기본 권한 승인 후 배터리 최적화 체크 시작")
+                checkBatteryOptimization()
             }
-            showPermissionRetryDialog(deniedPermissions)
+
+            override fun onPermissionDenied(deniedPermissions: MutableList<String>?) {
+                Log.d("Permission", "===== 기본 권한 거부됨 =====")
+                // 플래그 리셋
+                isRetryPermission = true
+                isBasicPermissionInProgress = false
+                Log.d("Permission", "테드_권한 거부 : $deniedPermissions")
+                Log.d("Permission", "테드_버전 여부 : ${Build.VERSION.SDK_INT}")
+
+                // Android 14+에서는 shouldShowRequestPermissionRationale이 제대로 작동하지 않으므로
+                // 첫 번째 거부에서는 항상 재요청 다이얼로그를 표시
+                Log.d("Permission", "권한 거부 - 재요청 다이얼로그 표시")
+                if (dialogPlus.isShowing) {
+                    dialogPlus.dismiss()
+                }
+                showPermissionRetryDialog(deniedPermissions)
+            }
         }
-    }
 
     private fun checkOverlayPermission() {
         Log.d("Permission", "===== checkOverlayPermission 시작 =====")
@@ -209,7 +205,7 @@ class EtcPermissonActivity : AppCompatActivity() {
                 Log.d("Permission", "오버레이 권한 이미 허용됨 - 기본 권한 요청")
                 // 오버레이 권한이 이미 있으면 기본 권한 요청
                 if (!isBasicPermissionInProgress) {
-                    if(dialogPlus.isShowing){
+                    if (dialogPlus.isShowing) {
                         dialogPlus.dismiss()
                     }
                     showEtcPermissionDialog()
@@ -221,7 +217,7 @@ class EtcPermissonActivity : AppCompatActivity() {
             Log.d("Permission", "Android 6.0 미만 - 오버레이 권한 체크 불필요")
             // 오버레이 권한이 불필요한 버전이면 바로 기본 권한 요청
             if (!isBasicPermissionInProgress) {
-                if(dialogPlus.isShowing){
+                if (dialogPlus.isShowing) {
                     dialogPlus.dismiss()
                 }
                 showEtcPermissionDialog()
@@ -273,6 +269,7 @@ class EtcPermissonActivity : AppCompatActivity() {
             requestOverlayPermission()
         }
     }
+
     private fun showEtcPermissionDialog() {
         Log.d("Dialog", "===== 기타 권한 다이얼로그 시작 =====")
         dialogPlus.show()
@@ -289,14 +286,14 @@ class EtcPermissonActivity : AppCompatActivity() {
         }
     }
 
-
     private fun requestOverlayPermission() {
         Log.d("Permission", "===== requestOverlayPermission 시작 =====")
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                    data = Uri.parse("package:$packageName")
-                }
+                val intent =
+                    Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
                 Log.d("Permission", "오버레이 권한 설정 화면으로 이동")
                 startActivity(intent)
 
@@ -350,10 +347,11 @@ class EtcPermissonActivity : AppCompatActivity() {
     private fun checkAndLaunchMainActivityOrRequestAccessibility() {
         Log.d("Permission", "===== checkAndLaunchMainActivityOrRequestAccessibility 시작 =====")
 
-        val hasAccessibility = isAccessibilityServiceEnabled(
-            this,
-            com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
-        )
+        val hasAccessibility =
+            isAccessibilityServiceEnabled(
+                this,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
+            )
         Log.d("Permission", "접근성 권한 상태: $hasAccessibility")
 
         if (hasAccessibility) {
@@ -383,19 +381,20 @@ class EtcPermissonActivity : AppCompatActivity() {
         Toast.makeText(
             this,
             "🎉 설정이 완료되었습니다! CallGuardAI가 백그라운드에서 동작합니다.",
-            Toast.LENGTH_LONG
+            Toast.LENGTH_LONG,
         ).show()
 
         // 1.5초 후 스플래시로 이동
         lifecycleScope.launch {
             delay(1500)
 
-            val intent = Intent(
-                this@EtcPermissonActivity,
-                SplashActivity::class.java
-            ).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
+            val intent =
+                Intent(
+                    this@EtcPermissonActivity,
+                    SplashActivity::class.java,
+                ).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                }
             startActivity(intent)
             finish()
         }
@@ -428,59 +427,61 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "오버레이 권한 자동 감지 시작 (적극적 모니터링)")
 
         // 새로운 권한 체크 작업 시작
-        overlayPermissionCheckJob = lifecycleScope.launch {
-            var checkCount = 0
-            Log.d("Permission", "오버레이 권한 체크 루프 시작")
+        overlayPermissionCheckJob =
+            lifecycleScope.launch {
+                var checkCount = 0
+                Log.d("Permission", "오버레이 권한 체크 루프 시작")
 
-            while (isActive) {
-                delay(200) // 0.2초마다 체크
-                checkCount++
+                while (isActive) {
+                    delay(200) // 0.2초마다 체크
+                    checkCount++
 
-                val hasOverlayPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    Settings.canDrawOverlays(this@EtcPermissonActivity)
-                } else {
-                    true
-                }
+                    val hasOverlayPermission =
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            Settings.canDrawOverlays(this@EtcPermissonActivity)
+                        } else {
+                            true
+                        }
 
-                Log.d(
-                    "Permission",
-                    "오버레이 권한 체크 ${checkCount}회 (${checkCount * 0.2}초): $hasOverlayPermission"
-                )
+                    Log.d(
+                        "Permission",
+                        "오버레이 권한 체크 ${checkCount}회 (${checkCount * 0.2}초): $hasOverlayPermission",
+                    )
 
-                if (hasOverlayPermission) {
-                    Log.d("권한확인", "오버레이 권한 자동 감지됨! (${checkCount * 0.2}초 후)")
+                    if (hasOverlayPermission) {
+                        Log.d("권한확인", "오버레이 권한 자동 감지됨! (${checkCount * 0.2}초 후)")
 
-                    // UI 스레드에서 앱을 포그라운드로 가져오기만 함 (기본 권한은 onResume에서 처리)
-                    withContext(Dispatchers.Main) {
-                        Log.d("Permission", "오버레이 권한 감지 완료 - 앱을 포그라운드로 가져오기")
+                        // UI 스레드에서 앱을 포그라운드로 가져오기만 함 (기본 권한은 onResume에서 처리)
+                        withContext(Dispatchers.Main) {
+                            Log.d("Permission", "오버레이 권한 감지 완료 - 앱을 포그라운드로 가져오기")
 
-                        // 앱을 포그라운드로 가져오기
-                        bringAppToForeground()
+                            // 앱을 포그라운드로 가져오기
+                            bringAppToForeground()
 
-                        Log.d("Permission", "앱 포그라운드 복귀 요청 완료 - onResume에서 기본 권한 처리 예정")
-                    }
-                    break
-                }
-
-                // 타임아웃 설정 (예: 10초)
-                if (checkCount >= 50) { // 50 * 0.2초 = 10초
-                    Log.w("권한확인", "오버레이 권한 체크 타임아웃 (10초) - 재시도")
-
-                    // 사용자에게 메시지 표시
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@EtcPermissonActivity,
-                            "오버레이 권한이 설정되지 않았습니다. 다시 확인해주세요.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                            Log.d("Permission", "앱 포그라운드 복귀 요청 완료 - onResume에서 기본 권한 처리 예정")
+                        }
+                        break
                     }
 
-                    // 타임아웃 후에도 계속 체크
-                    checkCount = 0
+                    // 타임아웃 설정 (예: 10초)
+                    if (checkCount >= 50) { // 50 * 0.2초 = 10초
+                        Log.w("권한확인", "오버레이 권한 체크 타임아웃 (10초) - 재시도")
+
+                        // 사용자에게 메시지 표시
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                this@EtcPermissonActivity,
+                                "오버레이 권한이 설정되지 않았습니다. 다시 확인해주세요.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+
+                        // 타임아웃 후에도 계속 체크
+                        checkCount = 0
+                    }
                 }
+                Log.d("Permission", "오버레이 권한 체크 루프 종료")
             }
-            Log.d("Permission", "오버레이 권한 체크 루프 종료")
-        }
         Log.d("Permission", "===== startOverlayPermissionCheck 완료 =====")
     }
 
@@ -488,11 +489,12 @@ class EtcPermissonActivity : AppCompatActivity() {
         Log.d("Permission", "앱을 포그라운드로 가져오는 중...")
         try {
             // 현재 액티비티를 포그라운드로 가져오기
-            val intent = Intent(this, EtcPermissonActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+            val intent =
+                Intent(this, EtcPermissonActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
                         Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
-            }
+                }
             startActivity(intent)
             Log.d("Permission", "앱 포그라운드 복귀 Intent 전송 완료")
         } catch (e: Exception) {
@@ -526,7 +528,7 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
+                    Manifest.permission.VIBRATE,
                 )
                 .check()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -543,7 +545,7 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
+                    Manifest.permission.VIBRATE,
                 )
                 .check()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2) {
@@ -559,7 +561,7 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
+                    Manifest.permission.VIBRATE,
                 )
                 .check()
         } else {
@@ -575,36 +577,38 @@ class EtcPermissonActivity : AppCompatActivity() {
                     Manifest.permission.READ_CONTACTS,
                     Manifest.permission.READ_CALL_LOG,
                     Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
+                    Manifest.permission.VIBRATE,
                 )
                 .check()
         }
 
         Log.d("Permission", "===== setPermission 완료 =====")
     }
+
     private fun dialogSetting() {
         customView = PermissionOverlayDialogBinding.inflate(layoutInflater)
         viewHolder = ViewHolder(customView.root)
 
         val originalStatusBarColor = window.statusBarColor
-        window.statusBarColor = ContextCompat.getColor(this,R.color.dialogplus_black_overlay)
+        window.statusBarColor = ContextCompat.getColor(this, R.color.dialogplus_black_overlay)
 
-        dialogPlus = DialogPlus.newDialog(this@EtcPermissonActivity)
-            .setContentBackgroundResource(R.drawable.dialog_round)
-            .setContentHolder(viewHolder)
-            .setCancelable(false)
-            .setInAnimation(R.anim.dialog_slide_up_fade_in)
-            .setOnDismissListener {
-                window.statusBarColor = originalStatusBarColor
-            }
-            .setExpanded(false)
-            .create()
+        dialogPlus =
+            DialogPlus.newDialog(this@EtcPermissonActivity)
+                .setContentBackgroundResource(R.drawable.dialog_round)
+                .setContentHolder(viewHolder)
+                .setCancelable(false)
+                .setInAnimation(R.anim.dialog_slide_up_fade_in)
+                .setOnDismissListener {
+                    window.statusBarColor = originalStatusBarColor
+                }
+                .setExpanded(false)
+                .create()
     }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
-        grantResults: IntArray
+        grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
@@ -630,7 +634,7 @@ class EtcPermissonActivity : AppCompatActivity() {
 //                        checkAndRequestPermissions()
                         showEtcPermission(this@EtcPermissonActivity)
                     }
-                }    // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
+                } // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
                 else {
                     Log.d("Permission", "권한 요청 실패2222: $deniedPermissions")
                     if (!isRetryPermission) {
@@ -647,7 +651,7 @@ class EtcPermissonActivity : AppCompatActivity() {
 //                        checkAndRequestPermissions()
                         showEtcPermission(this@EtcPermissonActivity)
                     }
-                }    // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
+                } // 거부된 권한 처리, 사용자에게 안내 메시지를 표시하거나 요청 재시도
                 else {
                     Log.d("Permission", "권한 요청 실패2222: $deniedPermissions")
                     if (!isRetryPermission) {
@@ -659,15 +663,15 @@ class EtcPermissonActivity : AppCompatActivity() {
     }
 
     private fun showEtcPermission(context: Context) {
-
         AlertDialog.Builder(context)
             .setTitle("권한 요청")
             .setMessage("앱이 원활하게 작동하려면 모든 권한이 필요합니다. 권한을 활성화해 주세요.")
             .setCancelable(false)
             .setPositiveButton("권한 수락하기") { _, _ ->
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:" + applicationContext.packageName)
-                }
+                val intent =
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:" + applicationContext.packageName)
+                    }
                 isRetryPermission = true
                 startActivity(intent)
             }
@@ -676,13 +680,16 @@ class EtcPermissonActivity : AppCompatActivity() {
     }
 
     private fun showBatteryOptimizationDialog() {
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("배터리 최적화 해제 필요")
-            .setMessage("CallGuardAI가 24시간 실시간으로 보이스피싱을 감지하려면 배터리 최적화에서 제외되어야 합니다.\n\n제외하지 않으면:\n• 통화 감지 실패\n• 보이스피싱 탐지 불가\n• 앱이 자동 종료됨")
-            .setPositiveButton("설정하기", null)
-            .setNegativeButton("건너뛰기", null)
-            .setCancelable(false)
-            .create()
+        val dialog =
+            AlertDialog.Builder(this)
+                .setTitle("배터리 최적화 해제 필요")
+                .setMessage(
+                    "CallGuardAI가 24시간 실시간으로 보이스피싱을 감지하려면 배터리 최적화에서 제외되어야 합니다.\n\n제외하지 않으면:\n• 통화 감지 실패\n• 보이스피싱 탐지 불가\n• 앱이 자동 종료됨",
+                )
+                .setPositiveButton("설정하기", null)
+                .setNegativeButton("건너뛰기", null)
+                .setCancelable(false)
+                .create()
 
         dialog.show()
 
@@ -703,9 +710,10 @@ class EtcPermissonActivity : AppCompatActivity() {
     private fun requestBatteryOptimizationExclusion() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = Uri.parse("package:$packageName")
-                }
+                val intent =
+                    Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    }
                 startActivityForResult(intent, REQUEST_BATTERY_OPTIMIZATION)
             }
         } catch (e: Exception) {
@@ -714,7 +722,11 @@ class EtcPermissonActivity : AppCompatActivity() {
         }
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ) {
         super.onActivityResult(requestCode, resultCode, data)
 
         when (requestCode) {
@@ -731,7 +743,7 @@ class EtcPermissonActivity : AppCompatActivity() {
         // 접근성 권한 확인
         if (!isAccessibilityServiceEnabled(
                 this,
-                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
             )
         ) {
             // 접근성 권한이 없으면 AccessibilityPermissionActivity로 이동
@@ -755,11 +767,15 @@ class EtcPermissonActivity : AppCompatActivity() {
     /**
      * 접근성 서비스 활성화 여부 확인
      */
-    private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
+    private fun isAccessibilityServiceEnabled(
+        context: Context,
+        service: Class<*>,
+    ): Boolean {
+        val enabledServices =
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
 
         val colonSplitter = TextUtils.SimpleStringSplitter(':')
         colonSplitter.setString(enabledServices)
@@ -767,7 +783,7 @@ class EtcPermissonActivity : AppCompatActivity() {
             val componentName = colonSplitter.next()
             if (componentName.equals(
                     ComponentName(context, service).flattenToString(),
-                    ignoreCase = true
+                    ignoreCase = true,
                 )
             ) {
                 return true
@@ -800,65 +816,66 @@ class EtcPermissonActivity : AppCompatActivity() {
     }
 
     private fun areBasicPermissionsGranted(): Boolean {
-        val requiredPermissions = when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
-                arrayOf(
-                    Manifest.permission.FOREGROUND_SERVICE,
-                    Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CONTACTS,
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
-                )
-            }
+        val requiredPermissions =
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
+                    arrayOf(
+                        Manifest.permission.FOREGROUND_SERVICE,
+                        Manifest.permission.FOREGROUND_SERVICE_SPECIAL_USE,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_PHONE_NUMBERS,
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+                        Manifest.permission.VIBRATE,
+                    )
+                }
 
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
-                arrayOf(
-                    Manifest.permission.READ_MEDIA_AUDIO,
-                    Manifest.permission.FOREGROUND_SERVICE,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CONTACTS,
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
-                )
-            }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                    arrayOf(
+                        Manifest.permission.READ_MEDIA_AUDIO,
+                        Manifest.permission.FOREGROUND_SERVICE,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_PHONE_NUMBERS,
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+                        Manifest.permission.VIBRATE,
+                    )
+                }
 
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2 -> {
-                arrayOf(
-                    Manifest.permission.FOREGROUND_SERVICE,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CONTACTS,
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
-                )
-            }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S_V2 -> {
+                    arrayOf(
+                        Manifest.permission.FOREGROUND_SERVICE,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_PHONE_NUMBERS,
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+                        Manifest.permission.VIBRATE,
+                    )
+                }
 
-            else -> {
-                arrayOf(
-                    Manifest.permission.FOREGROUND_SERVICE,
-                    Manifest.permission.POST_NOTIFICATIONS,
-                    Manifest.permission.RECORD_AUDIO,
-                    Manifest.permission.READ_PHONE_STATE,
-                    Manifest.permission.READ_PHONE_NUMBERS,
-                    Manifest.permission.READ_CONTACTS,
-                    Manifest.permission.READ_CALL_LOG,
-                    Manifest.permission.MODIFY_AUDIO_SETTINGS,
-                    Manifest.permission.VIBRATE
-                )
+                else -> {
+                    arrayOf(
+                        Manifest.permission.FOREGROUND_SERVICE,
+                        Manifest.permission.POST_NOTIFICATIONS,
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.READ_PHONE_STATE,
+                        Manifest.permission.READ_PHONE_NUMBERS,
+                        Manifest.permission.READ_CONTACTS,
+                        Manifest.permission.READ_CALL_LOG,
+                        Manifest.permission.MODIFY_AUDIO_SETTINGS,
+                        Manifest.permission.VIBRATE,
+                    )
+                }
             }
-        }
 
         return requiredPermissions.all { permission ->
             checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
@@ -869,17 +886,18 @@ class EtcPermissonActivity : AppCompatActivity() {
      * 권한 재요청 다이얼로그 표시
      */
     private fun showPermissionRetryDialog(deniedPermissions: MutableList<String>?) {
-        val permissionNames = deniedPermissions?.mapNotNull { permission ->
-            when (permission) {
-                Manifest.permission.RECORD_AUDIO -> "마이크"
-                Manifest.permission.READ_PHONE_STATE -> "전화 상태"
-                Manifest.permission.READ_PHONE_NUMBERS -> "전화번호"
-                Manifest.permission.READ_CONTACTS -> "연락처"
-                Manifest.permission.READ_CALL_LOG -> "통화 기록"
-                Manifest.permission.POST_NOTIFICATIONS -> "알림"
-                else -> null
-            }
-        }?.joinToString(", ") ?: "일부 권한"
+        val permissionNames =
+            deniedPermissions?.mapNotNull { permission ->
+                when (permission) {
+                    Manifest.permission.RECORD_AUDIO -> "마이크"
+                    Manifest.permission.READ_PHONE_STATE -> "전화 상태"
+                    Manifest.permission.READ_PHONE_NUMBERS -> "전화번호"
+                    Manifest.permission.READ_CONTACTS -> "연락처"
+                    Manifest.permission.READ_CALL_LOG -> "통화 기록"
+                    Manifest.permission.POST_NOTIFICATIONS -> "알림"
+                    else -> null
+                }
+            }?.joinToString(", ") ?: "일부 권한"
 
         AlertDialog.Builder(this)
             .setTitle("권한이 필요합니다")

@@ -7,7 +7,6 @@ import java.io.*
 import java.nio.charset.StandardCharsets
 
 class KoBertTokenizer(private val context: Context) : Closeable {
-
     companion object {
         private const val MODEL_ASSET = "models/tokenizer.model"
         private const val VOCAB_ASSET = "vocab.txt"
@@ -49,9 +48,9 @@ class KoBertTokenizer(private val context: Context) : Closeable {
     private fun normalize(text: String): String {
         return text.mapNotNull { ch ->
             when {
-                ch.isISOControl()       -> null
-                ch.isWhitespace()       -> ' '
-                else                    -> ch
+                ch.isISOControl() -> null
+                ch.isWhitespace() -> ' '
+                else -> ch
             }
         }.joinToString("")
             .trim()
@@ -64,9 +63,9 @@ class KoBertTokenizer(private val context: Context) : Closeable {
      */
     fun encode(text: String): Pair<List<Int>, List<Int>> {
         val norm = normalize(text)
-        val enc  = hfTokenizer.encode(norm)
+        val enc = hfTokenizer.encode(norm)
 
-        val ids  = enc.ids.map { it.toInt() }.toMutableList()
+        val ids = enc.ids.map { it.toInt() }.toMutableList()
         val mask = MutableList(ids.size) { 1 }
 
         if (ids.size > MAX_LEN) {
@@ -80,11 +79,13 @@ class KoBertTokenizer(private val context: Context) : Closeable {
     }
 
     /** 토큰 문자열 리스트 */
-    fun getTokens(text: String): List<String> =
-        hfTokenizer.encode(normalize(text)).tokens.toList()
+    fun getTokens(text: String): List<String> = hfTokenizer.encode(normalize(text)).tokens.toList()
 
     override fun close() {
-        try { hfTokenizer.close() }
-        catch (e: IOException) { /* 무시 */ }
+        try {
+            hfTokenizer.close()
+        } catch (e: IOException) {
+            // 무시
+        }
     }
 }

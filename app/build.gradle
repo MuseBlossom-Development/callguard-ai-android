@@ -4,6 +4,8 @@ plugins {
     id 'com.google.devtools.ksp' version '1.9.24-1.0.20'
     id 'com.google.dagger.hilt.android'
     id 'com.google.gms.google-services'
+    id 'org.jlleitschuh.gradle.ktlint' version '12.1.0'
+    id 'io.gitlab.arturbosch.detekt' version '1.23.4'
 }
 
 android {
@@ -60,6 +62,41 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion '1.5.14'
+    }
+}
+
+// Ktlint 설정
+ktlint {
+    version = "1.0.1"
+    android = true
+    ignoreFailures = true  // 실패해도 빌드 중단하지 않음
+    reporters {
+        reporter "plain"
+        reporter "checkstyle"
+        reporter "sarif"
+    }
+    filter {
+        exclude("**/generated/**")
+        exclude("**/build/**")
+        exclude("**/test/**")  // 테스트 파일 제외
+        include("**/kotlin/**")
+    }
+}
+
+// Detekt 설정
+detekt {
+    toolVersion = "1.23.4"
+    config.setFrom(file("$projectDir/config/detekt/detekt.yml"))
+    buildUponDefaultConfig = true
+    allRules = false
+    ignoreFailures = true  // 실패해도 빌드 중단하지 않음
+
+    reports {
+        html.required = true
+        xml.required = true
+        txt.required = true
+        sarif.required = true
+        md.required = true
     }
 }
 
@@ -151,6 +188,16 @@ dependencies {
     // Hilt
     implementation "com.google.dagger:hilt-android:2.48"
     ksp "com.google.dagger:hilt-compiler:2.48"
+
+    // Mock testing dependencies
+    testImplementation 'org.mockito:mockito-core:5.1.1'
+    testImplementation 'org.mockito.kotlin:mockito-kotlin:4.1.0'
+    testImplementation 'androidx.arch.core:core-testing:2.2.0'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3'
+
+    // Hilt testing
+    testImplementation 'com.google.dagger:hilt-android-testing:2.48'
+    kspTest 'com.google.dagger:hilt-compiler:2.48'
 
     // Room
     implementation "androidx.room:room-runtime:2.6.1"

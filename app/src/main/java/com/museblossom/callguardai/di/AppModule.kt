@@ -28,13 +28,13 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
-
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient {
-        val loggingInterceptor = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
-        }
+        val loggingInterceptor =
+            HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            }
 
         return OkHttpClient.Builder()
             .connectTimeout(60L, TimeUnit.SECONDS)
@@ -69,13 +69,17 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideCallGuardApiService(@Named("CallGuardApi") retrofit: Retrofit): CallGuardApiService {
+    fun provideCallGuardApiService(
+        @Named("CallGuardApi") retrofit: Retrofit,
+    ): CallGuardApiService {
         return retrofit.create(CallGuardApiService::class.java)
     }
 
     @Provides
     @Singleton
-    fun provideMp3UploadService(@Named("DeepVoiceApi") retrofit: Retrofit): Mp3UploadService {
+    fun provideMp3UploadService(
+        @Named("DeepVoiceApi") retrofit: Retrofit,
+    ): Mp3UploadService {
         return retrofit.create(Mp3UploadService::class.java)
     }
 
@@ -85,7 +89,7 @@ object AppModule {
     @Singleton
     fun provideAudioAnalysisRepository(
         @ApplicationContext context: Context,
-        callGuardRepository: CallGuardRepositoryInterface
+        callGuardRepository: CallGuardRepositoryInterface,
     ): AudioAnalysisRepositoryInterface {
         return AudioAnalysisRepositoryImpl(context, callGuardRepository)
     }
@@ -94,7 +98,7 @@ object AppModule {
     @Singleton
     fun provideCallGuardRepository(
         apiService: CallGuardApiService,
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
     ): CallGuardRepositoryInterface {
         return CallGuardRepositoryImpl(apiService, context)
     }
@@ -103,17 +107,13 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAnalyzeAudioUseCase(
-        repository: AudioAnalysisRepositoryInterface
-    ): AnalyzeAudioUseCase {
+    fun provideAnalyzeAudioUseCase(repository: AudioAnalysisRepositoryInterface): AnalyzeAudioUseCase {
         return AnalyzeAudioUseCase(repository)
     }
 
     @Provides
     @Singleton
-    fun provideCallGuardUseCase(
-        repository: CallGuardRepositoryInterface
-    ): CallGuardUseCase {
+    fun provideCallGuardUseCase(repository: CallGuardRepositoryInterface): CallGuardUseCase {
         return CallGuardUseCase(repository)
     }
 }

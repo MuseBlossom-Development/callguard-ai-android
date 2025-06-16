@@ -21,47 +21,32 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.credentials.CredentialManager
-import androidx.credentials.GetCredentialRequest
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.messaging.FirebaseMessaging
-import kotlinx.coroutines.tasks.await
-import com.museblossom.callguardai.CallGuardApplication
 import com.museblossom.callguardai.R
-
-import com.museblossom.callguardai.databinding.CallFloatingBinding
-import com.museblossom.callguardai.domain.model.AnalysisResult
-import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.data.repository.CallRecordRepository
+import com.museblossom.callguardai.databinding.CallFloatingBinding
+import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
 import com.museblossom.callguardai.domain.usecase.AnalyzeAudioUseCase
 import com.museblossom.callguardai.domain.usecase.CallGuardUseCase
 import com.museblossom.callguardai.util.etc.MyAccessibilityService
-import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.museblossom.callguardai.util.etc.Notifications
-import com.museblossom.callguardai.util.recorder.Recorder
-import com.museblossom.callguardai.util.recorder.RecorderListner
 import com.museblossom.callguardai.util.recorder.EnhancedRecorderListener
+import com.museblossom.callguardai.util.recorder.Recorder
+import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.whispercpp.whisper.WhisperContext
-import com.whispercpp.whisper.WhisperCpuConfig
-import com.yy.mobile.rollingtextview.CharOrder
-import com.yy.mobile.rollingtextview.strategy.Direction
-import com.yy.mobile.rollingtextview.strategy.Strategy
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.withContext
-import java.util.*
-import java.io.File
-import javax.inject.Inject
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.*
+import javax.inject.Inject
 
 /**
  * 통화 녹음 서비스 - 직접 상태 관리
@@ -71,7 +56,7 @@ import kotlinx.coroutines.tasks.await
 class CallRecordingService : Service() {
     // SharedPreferences for call detection setting
     private lateinit var sharedPreferences: SharedPreferences
-    
+
     @Inject
     lateinit var analyzeAudioUseCase: AnalyzeAudioUseCase
 
@@ -187,10 +172,13 @@ class CallRecordingService : Service() {
         /**
          * FCM으로부터 딥보이스 분석 결과 업데이트
          */
-        fun updateDeepVoiceFromFCM(uuid: String, probability: Int) {
+        fun updateDeepVoiceFromFCM(
+            uuid: String,
+            probability: Int,
+        ) {
             Log.d(
                 "통화녹음서비스",
-                "Companion: 딥보이스 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}"
+                "Companion: 딥보이스 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}",
             )
             serviceInstance?.handleFCMDeepVoiceResult(uuid, probability)
         }
@@ -198,10 +186,13 @@ class CallRecordingService : Service() {
         /**
          * FCM으로부터 보이스피싱 분석 결과 업데이트
          */
-        fun updateVoicePhishingFromFCM(uuid: String, probability: Int) {
+        fun updateVoicePhishingFromFCM(
+            uuid: String,
+            probability: Int,
+        ) {
             Log.d(
                 "통화녹음서비스",
-                "Companion: 보이스피싱 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}"
+                "Companion: 보이스피싱 FCM 호출 - UUID=$uuid, 확률=$probability%, serviceInstance=${if (serviceInstance != null) "존재" else "null"}",
             )
             serviceInstance?.handleFCMVoicePhishingResult(uuid, probability)
         }
@@ -210,7 +201,7 @@ class CallRecordingService : Service() {
     override fun onCreate() {
         super.onCreate()
         serviceInstance = this
-        
+
         // Initialize SharedPreferences
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
@@ -295,25 +286,24 @@ class CallRecordingService : Service() {
             val modelFile = File(modelPath)
 
             // assets 파일 존재 확인
-            val assetExists = try {
-                assets.open(assetModelPath).use { inputStream ->
-                    inputStream.available() > 0
+            val assetExists =
+                try {
+                    assets.open(assetModelPath).use { inputStream ->
+                        inputStream.available() > 0
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "assets 파일 확인 실패: $assetModelPath", e)
+                    false
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "assets 파일 확인 실패: $assetModelPath", e)
-                false
-            }
 
             try {
                 if (assetExists) {
                     // assets 모델 사용
                     whisperContext = WhisperContext.createContextFromAsset(assets, assetModelPath)
                     Log.i(TAG, "Whisper Context 생성 완료 (assets 모델)")
-
                 } else if (modelFile.exists() && modelFile.length() > 0L && modelFile.canRead()) {
                     whisperContext = WhisperContext.createContextFromFile(modelPath)
                     Log.i(TAG, "Whisper Context 생성 완료 (filesDir 모델)")
-
                 } else {
                     val errorMsg = "모델 파일을 찾을 수 없습니다. assets/$assetModelPath 또는 $modelPath 확인 필요"
                     Log.e(TAG, errorMsg)
@@ -322,9 +312,8 @@ class CallRecordingService : Service() {
 
                 Log.i(
                     TAG,
-                    "Whisper 모델 로드 완료: ${System.currentTimeMillis() - whisperModelLoadStart}ms 소요"
+                    "Whisper 모델 로드 완료: ${System.currentTimeMillis() - whisperModelLoadStart}ms 소요",
                 )
-
             } catch (e: RuntimeException) {
                 Log.e(TAG, "오류: WhisperContext 생성 실패", e)
             }
@@ -332,60 +321,60 @@ class CallRecordingService : Service() {
     }
 
     private fun initializeRecorder() {
-        recorder = Recorder(
-            context = this,
-            callback = { elapsedSeconds ->
-                // ViewModel에 통화 시간 업데이트
-                updateCallDuration(elapsedSeconds)
+        recorder =
+            Recorder(
+                context = this,
+                callback = { elapsedSeconds ->
+                    // ViewModel에 통화 시간 업데이트
+                    updateCallDuration(elapsedSeconds)
 
-                // 5초마다 통화 시간 로그 출력
-                if (elapsedSeconds % 5 == 0) {
-                    Log.i(
-                        TAG,
-                        "📞 통화 진행 중 - 경과시간: ${elapsedSeconds}초 (${formatTime(elapsedSeconds)}) | 녹음상태: ${if (isRecording) "녹음중" else "대기중"}"
-                    )
-                }
+                    // 5초마다 통화 시간 로그 출력
+                    if (elapsedSeconds % 5 == 0) {
+                        Log.i(
+                            TAG,
+                            "📞 통화 진행 중 - 경과시간: ${elapsedSeconds}초 (${formatTime(elapsedSeconds)}) | 녹음상태: ${if (isRecording) "녹음중" else "대기중"}",
+                        )
+                    }
 
-                // 20초마다 세그먼트 파일 처리 (15초 → 20초로 변경)
-                if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
-                    Log.d(TAG, "🎙️ 20초 세그먼트 처리 - 녹음 재시작 (경과시간: ${elapsedSeconds}초)")
-                    serviceScope.launch {
-                        // 분석을 위해 현재 녹음 중지하고 재시작
-                        withContext(Dispatchers.Main) {
-                            recorder.stopRecording(false)
-                            recorder.startRecording(0, isOnlyWhisper)
+                    // 20초마다 세그먼트 파일 처리 (15초 → 20초로 변경)
+                    if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
+                        Log.d(TAG, "🎙️ 20초 세그먼트 처리 - 녹음 재시작 (경과시간: ${elapsedSeconds}초)")
+                        serviceScope.launch {
+                            // 분석을 위해 현재 녹음 중지하고 재시작
+                            withContext(Dispatchers.Main) {
+                                recorder.stopRecording(false)
+                                recorder.startRecording(0, isOnlyWhisper)
+                            }
                         }
                     }
-                }
-            },
-            detectCallback = { isDeepVoiceDetected: Boolean, probability: Int ->
-                serviceScope.launch {
-                    handleDeepVoiceAnalysis(probability)
-                }
-            },
-            audioAnalysisRepository = audioAnalysisRepository,
-            currentCDNUploadPath = currentCDNUploadPath,
-            currentCallUuid = currentCallUuid
-        )
+                },
+                detectCallback = { isDeepVoiceDetected: Boolean, probability: Int ->
+                    serviceScope.launch {
+                        handleDeepVoiceAnalysis(probability)
+                    }
+                },
+                audioAnalysisRepository = audioAnalysisRepository,
+                currentCDNUploadPath = currentCDNUploadPath,
+                currentCallUuid = currentCallUuid,
+            )
 
         setRecordListener()
     }
 
-
-
     private fun initializeWindowManager() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        layoutParams =
+            WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
-            PixelFormat.TRANSLUCENT
-        )
+                PixelFormat.TRANSLUCENT,
+            )
         layoutParams.gravity = Gravity.CENTER
         layoutParams.y = 0
     }
@@ -406,12 +395,13 @@ class CallRecordingService : Service() {
                 Log.d(TAG, "화면 상태 - 꺼짐: $isScreenOff, 잠금: $isLocked - 화면 켜기 실행")
 
                 // WakeLock으로 화면 켜기 (오버레이 표시를 위해 필요)
-                val wakeLock = powerManager.newWakeLock(
-                    PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
+                val wakeLock =
+                    powerManager.newWakeLock(
+                        PowerManager.SCREEN_BRIGHT_WAKE_LOCK or
                             PowerManager.ACQUIRE_CAUSES_WAKEUP or
                             PowerManager.ON_AFTER_RELEASE,
-                    "CallGuardAI:CallWakeUp"
-                )
+                        "CallGuardAI:CallWakeUp",
+                    )
 
                 wakeLock.acquire(60000) // 60초 동안 유지 (오버레이 표시 시간)
 
@@ -434,7 +424,11 @@ class CallRecordingService : Service() {
         }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         intent?.action?.let { action ->
             when (action) {
                 ACTION_TRANSCRIBE_FILE -> {
@@ -477,7 +471,7 @@ class CallRecordingService : Service() {
             Log.d(TAG, "통화 감지가 비활성화되어 있으므로 처리하지 않음")
             return
         }
-        
+
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
         val phoneNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
         val cachedNumber = intent.getStringExtra("CACHED_PHONE_NUMBER")
@@ -487,9 +481,12 @@ class CallRecordingService : Service() {
         // 전화번호 정보가 있고 현재 저장된 번호가 Unknown이거나 null인 경우 업데이트
         val availableNumber = phoneNumber ?: cachedNumber
         if (availableNumber != null &&
-            (currentPhoneNumber == null || currentPhoneNumber == "Unknown" || currentPhoneNumber!!.startsWith(
-                "번호숨김_"
-            )) // incoming call only
+            (
+                currentPhoneNumber == null || currentPhoneNumber == "Unknown" ||
+                    currentPhoneNumber!!.startsWith(
+                        "번호숨김_",
+                    )
+            ) // incoming call only
         ) {
             currentPhoneNumber = availableNumber
         }
@@ -546,39 +543,42 @@ class CallRecordingService : Service() {
 
         // Theme-safe drawable 로딩
         try {
-            val backgroundDrawable = androidx.core.content.ContextCompat.getDrawable(
-                this,
-                R.drawable.call_widget_background
-            )
+            val backgroundDrawable =
+                androidx.core.content.ContextCompat.getDrawable(
+                    this,
+                    R.drawable.call_widget_background,
+                )
             bindingNormal!!.deepVoiceWidget.background = backgroundDrawable
             bindingNormal!!.phisingWidget.background = backgroundDrawable
         } catch (e: Exception) {
             Log.w(TAG, "Drawable 로드 실패, 기본 배경 사용: ${e.message}")
             // 기본 배경색으로 대체
             bindingNormal!!.deepVoiceWidget.setBackgroundColor(
-                androidx.core.content.ContextCompat.getColor(this, android.R.color.darker_gray)
+                androidx.core.content.ContextCompat.getColor(this, android.R.color.darker_gray),
             )
             bindingNormal!!.phisingWidget.setBackgroundColor(
-                androidx.core.content.ContextCompat.getColor(this, android.R.color.darker_gray)
+                androidx.core.content.ContextCompat.getColor(this, android.R.color.darker_gray),
             )
         }
 
         overlayNormalView = bindingNormal?.root
 
         // 잠금 화면에서도 오버레이가 표시되도록 플래그 설정 수정
-        val layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+        val layoutParams =
+            WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    WindowManager.LayoutParams.TYPE_PHONE
+                },
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        )
+                PixelFormat.TRANSLUCENT,
+            )
 
         try {
             windowManager.addView(overlayNormalView, layoutParams)
@@ -587,7 +587,6 @@ class CallRecordingService : Service() {
 
             // 권한 상태 체크 및 표시
             checkAndDisplayPermissionStatus()
-
         } catch (e: Exception) {
             Log.e(TAG, "오버레이 뷰 추가 실패: ${e.message}")
             showToastMessage("화면 오버레이 권한이 필요합니다.")
@@ -774,46 +773,52 @@ class CallRecordingService : Service() {
     }
 
     private fun setRecordListener() {
-        recorder.setRecordListner(object : EnhancedRecorderListener {
-            override fun onWaveConvertComplete(filePath: String?) {
-                // 기존 콜백 - 호환성을 위해 유지하지만 새 콜백이 우선
-            }
-
-            override fun onWaveFileReady(file: File, fileSize: Long, isValid: Boolean) {
-                // 서비스 스코프가 완전히 취소된 경우에만 처리 중단
-                if (!serviceScope.isActive) {
-                    Log.d(TAG, "서비스 스코프 비활성 - WAV 파일 처리 건너뜀")
-                    return
+        recorder.setRecordListner(
+            object : EnhancedRecorderListener {
+                override fun onWaveConvertComplete(filePath: String?) {
+                    // 기존 콜백 - 호환성을 위해 유지하지만 새 콜백이 우선
                 }
 
-                if (!isValid) {
-                    Log.e(TAG, "유효하지 않은 파일로 처리 중단")
-                    return
-                }
+                override fun onWaveFileReady(
+                    file: File,
+                    fileSize: Long,
+                    isValid: Boolean,
+                ) {
+                    // 서비스 스코프가 완전히 취소된 경우에만 처리 중단
+                    if (!serviceScope.isActive) {
+                        Log.d(TAG, "서비스 스코프 비활성 - WAV 파일 처리 건너뜀")
+                        return
+                    }
 
-                if (!file.exists()) {
-                    Log.e(TAG, "파일이 존재하지 않음 - Recorder에서 잘못된 콜백")
-                    return
-                }
+                    if (!isValid) {
+                        Log.e(TAG, "유효하지 않은 파일로 처리 중단")
+                        return
+                    }
 
-                if (file.length() != fileSize) {
-                    Log.w(TAG, "파일 크기 불일치 - 예상: $fileSize, 실제: ${file.length()}")
-                }
+                    if (!file.exists()) {
+                        Log.e(TAG, "파일이 존재하지 않음 - Recorder에서 잘못된 콜백")
+                        return
+                    }
 
-                Log.d(TAG, "마지막 WAV 파일 처리 시작: ${file.name}")
+                    if (file.length() != fileSize) {
+                        Log.w(TAG, "파일 크기 불일치 - 예상: $fileSize, 실제: ${file.length()}")
+                    }
 
-                serviceScope.launch {
-                    try {
-                        val data = decodeWaveFile(file)
-                        withContext(Dispatchers.Main) {
-                            transcribeWithWhisper(data)
+                    Log.d(TAG, "마지막 WAV 파일 처리 시작: ${file.name}")
+
+                    serviceScope.launch {
+                        try {
+                            val data = decodeWaveFile(file)
+                            withContext(Dispatchers.Main) {
+                                transcribeWithWhisper(data)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "WAV 파일 디코딩 중 오류: ${e.message}", e)
                         }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "WAV 파일 디코딩 중 오류: ${e.message}", e)
                     }
                 }
-            }
-        })
+            },
+        )
     }
 
     private suspend fun transcribeWithWhisper(data: FloatArray) {
@@ -836,7 +841,7 @@ class CallRecordingService : Service() {
                 val isLastProcessing = !isCallActive
                 Log.i(
                     TAG,
-                    "Whisper 전사 완료 (${elapsed}ms)${if (isLastProcessing) " [마지막 처리]" else ""}: '$result'"
+                    "Whisper 전사 완료 (${elapsed}ms)${if (isLastProcessing) " [마지막 처리]" else ""}: '$result'",
                 )
 
                 if (result.isNotBlank() && result != "WhisperContext 미초기화") {
@@ -880,7 +885,7 @@ class CallRecordingService : Service() {
                     try {
                         // 1. 텍스트를 TXT 파일로 저장
                         val timestamp = System.currentTimeMillis()
-                        val txtFileName = "${uuid}_transcription_${timestamp}.txt"
+                        val txtFileName = "${uuid}_transcription_$timestamp.txt"
                         val txtFile = File(cacheDir, txtFileName)
                         txtFile.writeText(result)
 
@@ -907,7 +912,6 @@ class CallRecordingService : Service() {
 
                         // 4. 임시 파일 삭제
                         txtFile.delete()
-
                     } catch (e: Exception) {
                         Log.e(TAG, "TXT 파일 처리 중 오류", e)
                     }
@@ -957,7 +961,10 @@ class CallRecordingService : Service() {
         }
     }
 
-    private fun handlePhishingAnalysis(text: String, isPhishing: Boolean) {
+    private fun handlePhishingAnalysis(
+        text: String,
+        isPhishing: Boolean,
+    ) {
         try {
             // 피싱 분석 처리
             updatePhishingStatus(isPhishing)
@@ -992,15 +999,16 @@ class CallRecordingService : Service() {
         serviceScope.launch(Dispatchers.Main) {
             val binding = bindingNormal ?: return@launch
 
-            binding.deepVoicePercentTextView1.setText("${probability}%")
+            binding.deepVoicePercentTextView1.setText("$probability%")
             binding.deepVoiceTextView1.text = "합성보이스 확률"
 
             // 텍스트 색상 변경 (RollingTextView는 일반 TextView 메서드 사용)
-            val textColor = when {
-                probability >= 70 -> Color.RED
-                probability >= 40 -> Color.parseColor("#FF9800") // 주황색
-                else -> Color.GREEN
-            }
+            val textColor =
+                when {
+                    probability >= 70 -> Color.RED
+                    probability >= 40 -> Color.parseColor("#FF9800") // 주황색
+                    else -> Color.GREEN
+                }
             try {
                 binding.deepVoicePercentTextView1.textColor = textColor
             } catch (e: Exception) {
@@ -1020,14 +1028,17 @@ class CallRecordingService : Service() {
         }
     }
 
-    private fun handlePhishing(text: String, isPhishing: Boolean) {
+    private fun handlePhishing(
+        text: String,
+        isPhishing: Boolean,
+    ) {
         // 피싱 감지 상태 - Main 디스패처로 UI 업데이트
         serviceScope.launch(Dispatchers.Main) {
             if (bindingNormal == null) return@launch
 
             bindingNormal!!.phisingTextView.text = if (isPhishing) "피싱 감지됨" else "정상"
             bindingNormal!!.phsingImageView1.setImageResource(
-                if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24
+                if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24,
             )
 
             // 배경색 변경
@@ -1066,10 +1077,11 @@ class CallRecordingService : Service() {
     }
 
     private fun setNotification() {
-        val recordNotification = Notifications.Builder(this, R.string.channel_id__call_recording)
-            .setContentTitle(getString(R.string.notification_title__call_recording))
-            .setSmallIcon(R.drawable.app_logo)
-            .build()
+        val recordNotification =
+            Notifications.Builder(this, R.string.channel_id__call_recording)
+                .setContentTitle(getString(R.string.notification_title__call_recording))
+                .setSmallIcon(R.drawable.app_logo)
+                .build()
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             startForeground(Notifications.NOTIFICATION_ID__CALL_RECORDING, recordNotification)
@@ -1077,7 +1089,7 @@ class CallRecordingService : Service() {
             startForeground(
                 Notifications.NOTIFICATION_ID__CALL_RECORDING,
                 recordNotification,
-                FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
             )
         }
     }
@@ -1130,34 +1142,36 @@ class CallRecordingService : Service() {
     /**
      * Silent 구글 로그인 수행
      */
-    private suspend fun performSilentSignIn(): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            Log.d(TAG, "Silent 구글 로그인 시도")
+    private suspend fun performSilentSignIn(): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Silent 구글 로그인 시도")
 
-            // GoogleSignInOptions 설정
-            val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-                .requestIdToken(getString(R.string.default_web_client_id))
-                .requestEmail()
-                .build()
+                // GoogleSignInOptions 설정
+                val gso =
+                    GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+                        .requestIdToken(getString(R.string.default_web_client_id))
+                        .requestEmail()
+                        .build()
 
-            // GoogleSignInClient 생성
-            val googleSignInClient = GoogleSignIn.getClient(this@CallRecordingService, gso)
+                // GoogleSignInClient 생성
+                val googleSignInClient = GoogleSignIn.getClient(this@CallRecordingService, gso)
 
-            // Silent 로그인 수행
-            val account = googleSignInClient.silentSignIn().await()
+                // Silent 로그인 수행
+                val account = googleSignInClient.silentSignIn().await()
 
-            if (account != null) {
-                Log.d(TAG, "Silent 로그인 성공 - account: $account")
-                Result.success(account.idToken ?: "")
-            } else {
-                Log.w(TAG, "Silent 로그인 실패 - 계정 정보가 null")
-                Result.failure(Exception("Silent 로그인 실패 - 계정 정보가 null"))
+                if (account != null) {
+                    Log.d(TAG, "Silent 로그인 성공 - account: $account")
+                    Result.success(account.idToken ?: "")
+                } else {
+                    Log.w(TAG, "Silent 로그인 실패 - 계정 정보가 null")
+                    Result.failure(Exception("Silent 로그인 실패 - 계정 정보가 null"))
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Silent 로그인 실패", e)
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Silent 로그인 실패", e)
-            Result.failure(e)
         }
-    }
 
     private fun startCall() {
         callStartTime = System.currentTimeMillis()
@@ -1167,9 +1181,9 @@ class CallRecordingService : Service() {
             "📞 통화 시작 - 시간: ${
                 java.text.SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss",
-                    java.util.Locale.getDefault()
+                    java.util.Locale.getDefault(),
                 ).format(callStartTime)
-            }"
+            }",
         )
         Log.i(TAG, "📞 전화번호: $currentPhoneNumber")
 
@@ -1182,9 +1196,10 @@ class CallRecordingService : Service() {
         // UseCase를 통한 통화 분석 준비 (Silent 로그인 + CDN URL)
         serviceScope.launch {
             try {
-                val result = callGuardUseCase.prepareCallAnalysis {
-                    performSilentSignIn()
-                }
+                val result =
+                    callGuardUseCase.prepareCallAnalysis {
+                        performSilentSignIn()
+                    }
 
                 result.fold(
                     onSuccess = { cdnData ->
@@ -1193,7 +1208,7 @@ class CallRecordingService : Service() {
 
                         Log.d(
                             TAG,
-                            "통화 분석 준비 완료 - UUID: ${currentCallUuid}, 업로드 경로: ${currentCDNUploadPath}"
+                            "통화 분석 준비 완료 - UUID: $currentCallUuid, 업로드 경로: $currentCDNUploadPath",
                         )
 
                         // FCM 토큰 갱신 및 서버 전송
@@ -1201,11 +1216,12 @@ class CallRecordingService : Service() {
 
                         // 통화 기록 저장
                         currentPhoneNumber?.let { phoneNumber ->
-                            val callRecord = com.museblossom.callguardai.data.model.CallRecord(
-                                uuid = currentCallUuid!!,
-                                phoneNumber = phoneNumber,
-                                callStartTime = callStartTime
-                            )
+                            val callRecord =
+                                com.museblossom.callguardai.data.model.CallRecord(
+                                    uuid = currentCallUuid!!,
+                                    phoneNumber = phoneNumber,
+                                    callStartTime = callStartTime,
+                                )
                             callRecordRepository.saveCallRecord(callRecord)
                         }
 
@@ -1216,14 +1232,14 @@ class CallRecordingService : Service() {
                         Log.e(TAG, "통화 분석 준비 실패", exception)
                         // 실패 시 임시 UUID 생성
                         currentCallUuid = java.util.UUID.randomUUID().toString()
-                        Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
-                    }
+                        Log.w(TAG, "임시 UUID 생성: $currentCallUuid")
+                    },
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "통화 분석 준비 중 오류", e)
                 // 오류 발생 시 임시 UUID 생성
                 currentCallUuid = java.util.UUID.randomUUID().toString()
-                Log.w(TAG, "임시 UUID 생성: ${currentCallUuid}")
+                Log.w(TAG, "임시 UUID 생성: $currentCallUuid")
             }
         }
 
@@ -1236,13 +1252,14 @@ class CallRecordingService : Service() {
         hasInitialAnalysisCompleted = false
 
         // StateFlow 업데이트
-        _uiState.value = CallRecordingState(
-            isCallActive = true,
-            isRecording = true,
-            callDuration = 0,
-            isPhishingDetected = false,
-            isDeepVoiceDetected = false
-        )
+        _uiState.value =
+            CallRecordingState(
+                isCallActive = true,
+                isRecording = true,
+                callDuration = 0,
+                isPhishingDetected = false,
+                isDeepVoiceDetected = false,
+            )
 
         setupOverlayView()
         startRecording(isOnlyWhisper = false)
@@ -1264,9 +1281,9 @@ class CallRecordingService : Service() {
             "📞 통화 종료 시간: ${
                 java.text.SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss",
-                    java.util.Locale.getDefault()
+                    java.util.Locale.getDefault(),
                 ).format(callEndTime)
-            }"
+            }",
         )
         Log.i(TAG, "📞 총 통화 시간: ${totalCallDuration}초 (${formatTime(totalCallDuration.toInt())})")
 
@@ -1312,7 +1329,6 @@ class CallRecordingService : Service() {
                 performFinalCleanup()
             }, 2000) // 2초 → 5초로 변경
             return // 여기서 리턴
-
         } catch (e: Exception) {
             Log.e(TAG, "녹음 중지 중 오류: ${e.message}")
         }
@@ -1354,6 +1370,7 @@ class CallRecordingService : Service() {
     /**
      * 시간을 MM:SS 형식으로 포맷팅
      */
+
     /**
      * 시간을 MM:SS 형식으로 포맷팅
      */
@@ -1373,11 +1390,14 @@ class CallRecordingService : Service() {
     /**
      * FCM으로부터 딥보이스 분석 결과 처리
      */
-    private fun handleFCMDeepVoiceResult(uuid: String, probability: Int) {
+    private fun handleFCMDeepVoiceResult(
+        uuid: String,
+        probability: Int,
+    ) {
         Log.d(TAG, "FCM 딥보이스 결과 수신: UUID=$uuid, 확률=$probability%")
         Log.d(
             TAG,
-            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible"
+            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible",
         )
 
         if (currentCallUuid == uuid) {
@@ -1399,11 +1419,14 @@ class CallRecordingService : Service() {
     /**
      * FCM으로부터 보이스피싱 분석 결과 처리
      */
-    private fun handleFCMVoicePhishingResult(uuid: String, probability: Int) {
+    private fun handleFCMVoicePhishingResult(
+        uuid: String,
+        probability: Int,
+    ) {
         Log.d(TAG, "FCM 보이스피싱 결과 수신: UUID=$uuid, 확률=$probability%")
         Log.d(
             TAG,
-            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible"
+            "현재 통화 UUID: $currentCallUuid, 통화 활성: $isCallActive, 오버레이 표시: $isOverlayCurrentlyVisible",
         )
 
         if (currentCallUuid == uuid) {
@@ -1427,25 +1450,27 @@ class CallRecordingService : Service() {
      */
     private fun showDeepVoiceNotification(probability: Int) {
         val title = getString(R.string.service_notification_deep_voice_title)
-        val message = when {
-            probability >= 70 -> getString(R.string.deep_voice_probability_high, probability)
-            probability >= 40 -> getString(R.string.deep_voice_probability_medium, probability)
-            else -> getString(R.string.deep_voice_probability_low, probability)
-        }
+        val message =
+            when {
+                probability >= 70 -> getString(R.string.deep_voice_probability_high, probability)
+                probability >= 40 -> getString(R.string.deep_voice_probability_medium, probability)
+                else -> getString(R.string.deep_voice_probability_low, probability)
+            }
 
-        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setSmallIcon(R.drawable.app_logo)
-            .setPriority(android.app.Notification.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
+        val notification =
+            Notifications.Builder(this, R.string.channel_id__call_recording)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.app_logo)
+                .setPriority(android.app.Notification.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
 
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(
             Notifications.NOTIFICATION_ID__CALL_RECORDING + 1,
-            notification
+            notification,
         )
     }
 
@@ -1454,30 +1479,35 @@ class CallRecordingService : Service() {
      */
     private fun showVoicePhishingNotification(probability: Int) {
         val isPhishing = probability >= 50
-        val title = if (isPhishing) {
-            getString(R.string.service_notification_voice_phishing_title)
-        } else {
-            getString(R.string.service_notification_call_safe_title)
-        }
-        val message = if (isPhishing) {
-            getString(R.string.voice_phishing_probability_detected, probability)
-        } else {
-            getString(R.string.voice_phishing_safe)
-        }
+        val title =
+            if (isPhishing) {
+                getString(R.string.service_notification_voice_phishing_title)
+            } else {
+                getString(R.string.service_notification_call_safe_title)
+            }
+        val message =
+            if (isPhishing) {
+                getString(R.string.voice_phishing_probability_detected, probability)
+            } else {
+                getString(R.string.voice_phishing_safe)
+            }
 
-        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setSmallIcon(R.drawable.app_logo)
-            .setPriority(if (isPhishing) android.app.Notification.PRIORITY_HIGH else android.app.Notification.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .build()
+        val notification =
+            Notifications.Builder(this, R.string.channel_id__call_recording)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.app_logo)
+                .setPriority(
+                    if (isPhishing) android.app.Notification.PRIORITY_HIGH else android.app.Notification.PRIORITY_DEFAULT,
+                )
+                .setAutoCancel(true)
+                .build()
 
         val notificationManager =
             getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(
             Notifications.NOTIFICATION_ID__CALL_RECORDING + 2,
-            notification
+            notification,
         )
     }
 
@@ -1489,7 +1519,7 @@ class CallRecordingService : Service() {
         val isRecording: Boolean = false,
         val callDuration: Int = 0,
         val isPhishingDetected: Boolean = false,
-        val isDeepVoiceDetected: Boolean = false
+        val isDeepVoiceDetected: Boolean = false,
     )
 
     /**
@@ -1497,15 +1527,21 @@ class CallRecordingService : Service() {
      */
     sealed class CallRecordingEvent {
         object RequestStart : CallRecordingEvent()
+
         object RequestStop : CallRecordingEvent()
+
         data class UpdatePhishing(val detected: Boolean) : CallRecordingEvent()
+
         data class UpdateDeepVoice(val detected: Boolean) : CallRecordingEvent()
     }
 
     /**
      * Updates recorder with current call UUID and CDN upload path
      */
-    private fun updateRecorderMetadata(uuid: String, uploadPath: String) {
+    private fun updateRecorderMetadata(
+        uuid: String,
+        uploadPath: String,
+    ) {
         recorder.updateRecorderMetadata(uuid, uploadPath)
     }
 
@@ -1522,13 +1558,13 @@ class CallRecordingService : Service() {
             // Check overlay permission (doesn't use standard permission system)
             val hasOverlayPermission = android.provider.Settings.canDrawOverlays(this)
             // ✅ 접근성 권한 확인 (내 접근성 서비스 이름으로 비교)
-            val myServiceId = "${packageName}/${MyAccessibilityService::class.java.name}"
-            val enabledServices = android.provider.Settings.Secure.getString(
-                contentResolver,
-                android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            )
+            val myServiceId = "$packageName/${MyAccessibilityService::class.java.name}"
+            val enabledServices =
+                android.provider.Settings.Secure.getString(
+                    contentResolver,
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                )
             val isAccessibilityEnabled = enabledServices?.split(":")?.contains(myServiceId) == true
-
 
             // Update UI based on permission status
             binding.permissionStatusView?.let { statusView ->
@@ -1536,12 +1572,13 @@ class CallRecordingService : Service() {
                 statusView.visibility = View.VISIBLE
 
                 // Create permission status text
-                val permissionStatus = buildString {
-                    if (!hasRecordPermission) append("• 마이크 권한 필요\n")
-                    if (!hasPhonePermission) append("• 전화 상태 권한 필요\n")
-                    if (!hasOverlayPermission) append("• 오버레이 권한 필요\n")
-                    if (!isAccessibilityEnabled) append("• 접근성 권한 필요\n")
-                }
+                val permissionStatus =
+                    buildString {
+                        if (!hasRecordPermission) append("• 마이크 권한 필요\n")
+                        if (!hasPhonePermission) append("• 전화 상태 권한 필요\n")
+                        if (!hasOverlayPermission) append("• 오버레이 권한 필요\n")
+                        if (!isAccessibilityEnabled) append("• 접근성 권한 필요\n")
+                    }
 
                 // If all permissions granted, show success message
                 if (permissionStatus.isEmpty()) {
@@ -1554,11 +1591,10 @@ class CallRecordingService : Service() {
 
             Log.d(
                 TAG,
-                "권한 상태 - 마이크: $hasRecordPermission, 전화: $hasPhonePermission, 오버레이: $hasOverlayPermission"
+                "권한 상태 - 마이크: $hasRecordPermission, 전화: $hasPhonePermission, 오버레이: $hasOverlayPermission",
             )
         } catch (e: Exception) {
             Log.e(TAG, "권한 상태 확인 중 오류 발생", e)
         }
     }
-
 }

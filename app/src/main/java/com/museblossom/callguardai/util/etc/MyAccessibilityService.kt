@@ -1,8 +1,8 @@
 package com.museblossom.callguardai.util.etc
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
@@ -18,7 +18,6 @@ import java.util.concurrent.atomic.AtomicInteger
  * Simplified accessibility service focused on audio capture
  */
 class MyAccessibilityService : AccessibilityService() {
-
     // 최적화된 오디오 설정
     private var audioRecord: AudioRecord? = null
     private val audioSource = MediaRecorder.AudioSource.MIC
@@ -45,17 +44,19 @@ class MyAccessibilityService : AccessibilityService() {
     // 콜백 인터페이스
     interface ContinuousAudioCallback {
         fun onAudioSegmentReady(audioFile: File)
+
         fun onRecordingError(error: String)
     }
 
     private var audioCallback: ContinuousAudioCallback? = null
 
     override fun onServiceConnected() {
-        val serviceInfo = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-        }
+        val serviceInfo =
+            AccessibilityServiceInfo().apply {
+                eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+                flags = AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+            }
         this.serviceInfo = serviceInfo
         Log.d("MyAccessibilityService", "접근성 서비스 연결됨 - 고성능 모드 활성화")
     }
@@ -79,23 +80,24 @@ class MyAccessibilityService : AccessibilityService() {
             }
 
             // 새로운 AudioRecord 생성
-            audioRecord = AudioRecord.Builder()
-                .setAudioSource(audioSource)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setChannelMask(channelConfig)
-                        .setEncoding(audioFormat)
-                        .build()
-                )
-                .setBufferSizeInBytes(bufferSize)
-                .build()
+            audioRecord =
+                AudioRecord.Builder()
+                    .setAudioSource(audioSource)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setChannelMask(channelConfig)
+                            .setEncoding(audioFormat)
+                            .build(),
+                    )
+                    .setBufferSizeInBytes(bufferSize)
+                    .build()
 
             val success = audioRecord?.state == AudioRecord.STATE_INITIALIZED
             Log.d("MyAccessibilityService", "AudioRecord 초기화: ${if (success) "성공" else "실패"}")
             Log.d(
                 "MyAccessibilityService",
-                "버퍼 크기: $bufferSize bytes, 세그먼트 크기: $segmentSizeBytes bytes"
+                "버퍼 크기: $bufferSize bytes, 세그먼트 크기: $segmentSizeBytes bytes",
             )
 
             return success
@@ -127,9 +129,10 @@ class MyAccessibilityService : AccessibilityService() {
                 isRecording.set(true)
                 segmentCounter.set(0)
 
-                recordingJob = serviceScope.launch {
-                    optimizedRecordingLoop()
-                }
+                recordingJob =
+                    serviceScope.launch {
+                        optimizedRecordingLoop()
+                    }
 
                 Log.d("MyAccessibilityService", "고성능 오디오 캡처 시작 - ${segmentDurationSeconds}초 세그먼트")
             } catch (e: Exception) {
@@ -164,7 +167,6 @@ class MyAccessibilityService : AccessibilityService() {
 
                 // CPU 부하 감소를 위한 짧은 대기
                 yield()
-
             } catch (e: Exception) {
                 Log.e("MyAccessibilityService", "녹음 루프 오류", e)
                 withContext(Dispatchers.Main) {
@@ -200,9 +202,8 @@ class MyAccessibilityService : AccessibilityService() {
 
                 Log.d(
                     "MyAccessibilityService",
-                    "세그먼트 #$segmentNumber 처리 완료 (${audioData.size} bytes)"
+                    "세그먼트 #$segmentNumber 처리 완료 (${audioData.size} bytes)",
                 )
-
             } catch (e: Exception) {
                 Log.e("MyAccessibilityService", "세그먼트 처리 실패", e)
             }
@@ -212,7 +213,10 @@ class MyAccessibilityService : AccessibilityService() {
     /**
      * 빠른 WAV 파일 생성 - 최적화된 방식
      */
-    private fun createSegmentFileFast(segmentNumber: Int, audioData: ByteArray): File {
+    private fun createSegmentFileFast(
+        segmentNumber: Int,
+        audioData: ByteArray,
+    ): File {
         val fileName = "segment_${segmentNumber}_${System.currentTimeMillis()}.wav"
         val segmentFile = File(cacheDir, fileName)
 
@@ -226,7 +230,6 @@ class MyAccessibilityService : AccessibilityService() {
             }
 
             Log.d("MyAccessibilityService", "세그먼트 파일 생성: $fileName (${segmentFile.length()} bytes)")
-
         } catch (e: Exception) {
             Log.e("MyAccessibilityService", "세그먼트 파일 생성 실패", e)
             throw e
@@ -238,7 +241,10 @@ class MyAccessibilityService : AccessibilityService() {
     /**
      * 최적화된 WAV 헤더 작성
      */
-    private fun writeWavHeader(fos: FileOutputStream, dataSize: Int) {
+    private fun writeWavHeader(
+        fos: FileOutputStream,
+        dataSize: Int,
+    ) {
         val channels = 1
         val bitsPerSample = 16
         val byteRate = sampleRate * channels * bitsPerSample / 8
@@ -278,7 +284,7 @@ class MyAccessibilityService : AccessibilityService() {
             (value and 0xFF).toByte(),
             ((value shr 8) and 0xFF).toByte(),
             ((value shr 16) and 0xFF).toByte(),
-            ((value shr 24) and 0xFF).toByte()
+            ((value shr 24) and 0xFF).toByte(),
         )
     }
 
@@ -288,7 +294,7 @@ class MyAccessibilityService : AccessibilityService() {
     private fun shortToByteArray(value: Short): ByteArray {
         return byteArrayOf(
             (value.toInt() and 0xFF).toByte(),
-            ((value.toInt() shr 8) and 0xFF).toByte()
+            ((value.toInt() shr 8) and 0xFF).toByte(),
         )
     }
 

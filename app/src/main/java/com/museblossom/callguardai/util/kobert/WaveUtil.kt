@@ -16,12 +16,18 @@ object WaveUtil {
         samples: ByteArray,
         sampleRate: Int,
         numChannels: Int,
-        bytesPerSample: Int
+        bytesPerSample: Int,
     ) {
         try {
             val dataSize = samples.size // actual data size in bytes
             val audioFormat =
-                if ((bytesPerSample == 2)) 1 else if ((bytesPerSample == 4)) 3 else 0 // PCM_16 = 1, PCM_FLOAT = 3
+                if ((bytesPerSample == 2)) {
+                    1
+                } else if ((bytesPerSample == 4)) {
+                    3
+                } else {
+                    0 // PCM_16 = 1, PCM_FLOAT = 3
+                }
 
             val fileOutputStream = FileOutputStream(filePath)
             fileOutputStream.write("RIFF".toByteArray(StandardCharsets.UTF_8)) // Write the "RIFF" chunk descriptor
@@ -32,28 +38,30 @@ object WaveUtil {
             fileOutputStream.write(
                 shortToByteArray(audioFormat.toShort().toInt()),
                 0,
-                2
+                2,
             ) // Audio format (1 for PCM)
             fileOutputStream.write(
                 shortToByteArray(numChannels.toShort().toInt()),
                 0,
-                2
+                2,
             ) // Number of channels
             fileOutputStream.write(intToByteArray(sampleRate), 0, 4) // Sample rate
             fileOutputStream.write(
                 intToByteArray(sampleRate * numChannels * bytesPerSample),
                 0,
-                4
+                4,
             ) // Byte rate
             fileOutputStream.write(
                 shortToByteArray(
-                    (numChannels * bytesPerSample).toShort().toInt()
-                ), 0, 2
+                    (numChannels * bytesPerSample).toShort().toInt(),
+                ),
+                0,
+                2,
             ) // Block align
             fileOutputStream.write(
                 shortToByteArray((bytesPerSample * 8).toShort().toInt()),
                 0,
-                2
+                2,
             ) // Bits per sample
             fileOutputStream.write("data".toByteArray(StandardCharsets.UTF_8)) // Write the "data" sub-chunk
             fileOutputStream.write(intToByteArray(dataSize), 0, 4) // Data size
@@ -126,7 +134,11 @@ object WaveUtil {
     }
 
     // Convert a portion of a byte array into an integer or a short
-    private fun byteArrayToNumber(bytes: ByteArray, offset: Int, length: Int): Int {
+    private fun byteArrayToNumber(
+        bytes: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int {
         var value = 0 // Start with an initial value of 0
 
         // Loop through the specified portion of the byte array

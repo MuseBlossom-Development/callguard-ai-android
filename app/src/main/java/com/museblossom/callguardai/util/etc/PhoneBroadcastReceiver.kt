@@ -1,13 +1,11 @@
 package com.museblossom.callguardai.util.etc
 
 import android.annotation.SuppressLint
-import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
-import android.net.Uri
 import android.os.Build
 import android.provider.CallLog
 import android.telephony.TelephonyManager
@@ -16,9 +14,7 @@ import androidx.core.content.ContextCompat
 import com.museblossom.callguardai.CallGuardApplication
 import com.museblossom.callguardai.util.audio.CallRecordingService
 
-
 class PhoneBroadcastReceiver : BroadcastReceiver() {
-
     companion object {
         // 최근 전화번호를 저장해두는 정적 변수 (RINGING -> OFFHOOK 사이에서 유실 방지)
         @Volatile
@@ -29,7 +25,10 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
     }
 
     @SuppressLint("MissingPermission")
-    override fun onReceive(context: Context, intent: Intent) {
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ) {
         val action = intent.action
 
         // 테스트 모드 상태 로그
@@ -46,14 +45,15 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
 
         // 전화번호 정보 추출 및 로깅
-        var phoneNumber = when (action) {
-            TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
-                // 수신 전화번호 (RINGING 상태에서만 제공됨)
-                intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+        var phoneNumber =
+            when (action) {
+                TelephonyManager.ACTION_PHONE_STATE_CHANGED -> {
+                    // 수신 전화번호 (RINGING 상태에서만 제공됨)
+                    intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
+                }
+                // 발신 전화 처리 제거 - 수신 전화만 처리
+                else -> null
             }
-            // 발신 전화 처리 제거 - 수신 전화만 처리
-            else -> null
-        }
 
         // RINGING 상태에서 전화번호를 캐시
         if (state == TelephonyManager.EXTRA_STATE_RINGING && phoneNumber != null) {
@@ -137,7 +137,6 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
 
         // PHONE_STATE_CHANGED만 처리 - 수신 전화만 모니터링
         if (action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
-
             // 통화감지 설정 확인
             val sharedPrefs =
                 context.getSharedPreferences("CallGuardAI_Settings", Context.MODE_PRIVATE)
@@ -149,25 +148,26 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
             }
 
             // 원본 브로드캐스트 Intent 복제 → extras 보존
-            val svcIntent = Intent(intent).apply {
-                setClass(context, CallRecordingService::class.java)
-                // 캐시된 전화번호가 있으면 추가로 전달
-                if (phoneNumber != null) {
-                    putExtra("CACHED_PHONE_NUMBER", phoneNumber)
+            val svcIntent =
+                Intent(intent).apply {
+                    setClass(context, CallRecordingService::class.java)
+                    // 캐시된 전화번호가 있으면 추가로 전달
+                    if (phoneNumber != null) {
+                        putExtra("CACHED_PHONE_NUMBER", phoneNumber)
+                    }
                 }
-            }
 
             ContextCompat.startForegroundService(context, svcIntent)
             Log.i(
                 "PhoneBroadcastReceiver",
-                "${testModePrefix}서비스 전달 -> $action, 전화번호: $phoneNumber"
+                "${testModePrefix}서비스 전달 -> $action, 전화번호: $phoneNumber",
             )
 
             if (isTestMode) {
                 Log.d("PhoneBroadcastReceiver", "🧪 테스트 모드에서 CallRecordingService 시작됨")
                 Log.d(
                     "PhoneBroadcastReceiver",
-                    "🧪 테스트 파일: ${CallGuardApplication.getTestAudioFile()}"
+                    "🧪 테스트 파일: ${CallGuardApplication.getTestAudioFile()}",
                 )
             }
         }
@@ -176,13 +176,14 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
     @SuppressLint("MissingPermission")
     private fun getLatestCallNumber(context: Context): String? {
         try {
-            val cursor: Cursor? = context.contentResolver.query(
-                CallLog.Calls.CONTENT_URI,
-                arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE),
-                null,
-                null,
-                "${CallLog.Calls.DATE} DESC LIMIT 1"
-            )
+            val cursor: Cursor? =
+                context.contentResolver.query(
+                    CallLog.Calls.CONTENT_URI,
+                    arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.TYPE, CallLog.Calls.DATE),
+                    null,
+                    null,
+                    "${CallLog.Calls.DATE} DESC LIMIT 1",
+                )
 
             cursor?.use {
                 if (it.moveToFirst()) {
@@ -217,24 +218,26 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
     private fun hasCallLogPermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
-            android.Manifest.permission.READ_CALL_LOG
+            android.Manifest.permission.READ_CALL_LOG,
         ) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun hasPhonePermissions(context: Context): Boolean {
-        val hasReadPhoneState = ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.READ_PHONE_STATE
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasReadPhoneNumbers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val hasReadPhoneState =
             ContextCompat.checkSelfPermission(
                 context,
-                android.Manifest.permission.READ_PHONE_NUMBERS
+                android.Manifest.permission.READ_PHONE_STATE,
             ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+
+        val hasReadPhoneNumbers =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.READ_PHONE_NUMBERS,
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
 
         return hasReadPhoneState && hasReadPhoneNumbers
     }
@@ -242,7 +245,7 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
     private fun hasReadPhoneStatePermission(context: Context): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
-            android.Manifest.permission.READ_PHONE_STATE
+            android.Manifest.permission.READ_PHONE_STATE,
         ) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -250,7 +253,7 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             ContextCompat.checkSelfPermission(
                 context,
-                android.Manifest.permission.READ_PHONE_NUMBERS
+                android.Manifest.permission.READ_PHONE_NUMBERS,
             ) == PackageManager.PERMISSION_GRANTED
         } else {
             true

@@ -22,7 +22,6 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MyFirebaseMessagingService : FirebaseMessagingService() {
-
     @Inject
     lateinit var callRecordRepository: CallRecordRepository
 
@@ -39,7 +38,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         super.onNewToken(token)
         Log.d(TAG, "${getString(R.string.log_fcm_token_generated)}: $token")
-        
+
         // 토큰을 서버로 전송
         sendTokenToServer(token)
     }
@@ -85,7 +84,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             val probability = data["probability"]
             val uuid = data["uuid"] // 서버에서 전송하는 UUID
 
-            Log.d(TAG, "메시지 알림: ${eventType} - ${data}")
+            Log.d(TAG, "메시지 알림: $eventType - $data")
 
             if (uuid.isNullOrEmpty()) {
                 Log.w(TAG, getString(R.string.log_uuid_missing))
@@ -98,16 +97,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     val callRecord = callRecordRepository.getCallRecordByUuid(uuid)
                     val phoneNumber = callRecord?.phoneNumber
 
-                    val contactName = if (!phoneNumber.isNullOrEmpty()) {
-                        ContactsUtils.getContactName(this@MyFirebaseMessagingService, phoneNumber)
-                            ?: phoneNumber
-                    } else {
-                        getString(R.string.unknown_number)
-                    }
+                    val contactName =
+                        if (!phoneNumber.isNullOrEmpty()) {
+                            ContactsUtils.getContactName(this@MyFirebaseMessagingService, phoneNumber)
+                                ?: phoneNumber
+                        } else {
+                            getString(R.string.unknown_number)
+                        }
 
                     Log.d(
                         TAG,
-                        "${getString(R.string.log_call_record_query_result)}: UUID=$uuid, 번호=$phoneNumber, 연락처=$contactName"
+                        "${getString(
+                            R.string.log_call_record_query_result,
+                        )}: UUID=$uuid, 번호=$phoneNumber, 연락처=$contactName",
                     )
 
                     // 오버레이 뷰 존재 여부 확인
@@ -118,7 +120,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                         FCMEventData.EVENT_TYPE_DEEP_VOICE -> {
                             Log.d(
                                 TAG,
-                                "${getString(R.string.log_deep_voice_detection)} - 확률: $probability%"
+                                "${getString(R.string.log_deep_voice_detection)} - 확률: $probability%",
                             )
 
                             // 데이터베이스 업데이트
@@ -132,7 +134,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                         FCMEventData.EVENT_TYPE_VOICE_PHISHING -> {
                             Log.d(
                                 TAG,
-                                "${getString(R.string.log_voice_phishing_detection)} - 확률: $probability%"
+                                "${getString(R.string.log_voice_phishing_detection)} - 확률: $probability%",
                             )
 
                             // 데이터베이스 업데이트
@@ -166,11 +168,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         probability: Int,
         isOverlayVisible: Boolean,
         contactName: String,
-        uuid: String
+        uuid: String,
     ) {
         Log.d(
             TAG,
-            "딥보이스 감지 처리: $probability%, 오버레이 표시: $isOverlayVisible, 연락처: $contactName, UUID: $uuid"
+            "딥보이스 감지 처리: $probability%, 오버레이 표시: $isOverlayVisible, 연락처: $contactName, UUID: $uuid",
         )
 
         if (isOverlayVisible) {
@@ -185,7 +187,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         Log.w(
             TAG,
-            "${getString(R.string.log_deep_voice_detected_emoji)} 확률: $probability% - 연락처: $contactName"
+            "${getString(R.string.log_deep_voice_detected_emoji)} 확률: $probability% - 연락처: $contactName",
         )
     }
 
@@ -199,11 +201,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         probability: Int,
         isOverlayVisible: Boolean,
         contactName: String,
-        uuid: String
+        uuid: String,
     ) {
         Log.d(
             TAG,
-            "보이스피싱 감지 처리: $probability%, 오버레이 표시: $isOverlayVisible, 연락처: $contactName, UUID: $uuid"
+            "보이스피싱 감지 처리: $probability%, 오버레이 표시: $isOverlayVisible, 연락처: $contactName, UUID: $uuid",
         )
 
         if (isOverlayVisible) {
@@ -218,31 +220,35 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         Log.e(
             TAG,
-            "${getString(R.string.log_voice_phishing_detected_emoji)} 확률: $probability% - 연락처: $contactName"
+            "${getString(R.string.log_voice_phishing_detected_emoji)} 확률: $probability% - 연락처: $contactName",
         )
     }
 
     /**
      * 딥보이스 감지 알림 표시 (FCM에서 직접 호출)
      */
-    private fun showDeepVoiceNotification(probability: Int, contactName: String) {
+    private fun showDeepVoiceNotification(
+        probability: Int,
+        contactName: String,
+    ) {
         val title = getString(R.string.notification_title_deep_voice_detected)
         val message =
             getString(R.string.notification_message_deep_voice_detected, probability, contactName)
 
-        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setSmallIcon(R.drawable.app_logo)
-            .setPriority(android.app.Notification.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
+        val notification =
+            Notifications.Builder(this, R.string.channel_id__call_recording)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.app_logo)
+                .setPriority(android.app.Notification.PRIORITY_HIGH)
+                .setAutoCancel(true)
+                .build()
 
         val notificationManager =
             getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(
             Notifications.NOTIFICATION_ID__CALL_RECORDING + 100, // FCM 알림 전용 ID
-            notification
+            notification,
         )
 
         Log.d(TAG, "${getString(R.string.log_notification_shown_fcm)} - 딥보이스")
@@ -251,36 +257,44 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     /**
      * 보이스피싱 감지 알림 표시 (FCM에서 직접 호출)
      */
-    private fun showVoicePhishingNotification(probability: Int, contactName: String) {
+    private fun showVoicePhishingNotification(
+        probability: Int,
+        contactName: String,
+    ) {
         val isPhishing = probability >= 50
-        val title = if (isPhishing) {
-            getString(R.string.notification_title_voice_phishing_detected)
-        } else {
-            getString(R.string.notification_title_call_safe)
-        }
-        val message = if (isPhishing) {
-            getString(
-                R.string.notification_message_voice_phishing_detected,
-                probability,
-                contactName
-            )
-        } else {
-            getString(R.string.notification_message_call_safe, contactName)
-        }
+        val title =
+            if (isPhishing) {
+                getString(R.string.notification_title_voice_phishing_detected)
+            } else {
+                getString(R.string.notification_title_call_safe)
+            }
+        val message =
+            if (isPhishing) {
+                getString(
+                    R.string.notification_message_voice_phishing_detected,
+                    probability,
+                    contactName,
+                )
+            } else {
+                getString(R.string.notification_message_call_safe, contactName)
+            }
 
-        val notification = Notifications.Builder(this, R.string.channel_id__call_recording)
-            .setContentTitle(title)
-            .setContentText(message)
-            .setSmallIcon(R.drawable.app_logo)
-            .setPriority(if (isPhishing) android.app.Notification.PRIORITY_HIGH else android.app.Notification.PRIORITY_DEFAULT)
-            .setAutoCancel(true)
-            .build()
+        val notification =
+            Notifications.Builder(this, R.string.channel_id__call_recording)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setSmallIcon(R.drawable.app_logo)
+                .setPriority(
+                    if (isPhishing) android.app.Notification.PRIORITY_HIGH else android.app.Notification.PRIORITY_DEFAULT,
+                )
+                .setAutoCancel(true)
+                .build()
 
         val notificationManager =
             getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.notify(
             Notifications.NOTIFICATION_ID__CALL_RECORDING + 200, // FCM 알림 전용 ID
-            notification
+            notification,
         )
 
         Log.d(TAG, "${getString(R.string.log_notification_shown_fcm)} - 보이스피싱")
@@ -291,7 +305,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      */
     private fun sendTokenToServer(token: String) {
         Log.d(TAG, "토큰 서버 전송: $token")
-        
+
         // TODO: CallGuardRepository를 통해 서버로 토큰 전송
         // 현재는 로그만 출력
     }

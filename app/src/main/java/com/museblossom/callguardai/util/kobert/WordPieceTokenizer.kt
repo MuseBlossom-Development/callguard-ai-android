@@ -34,10 +34,11 @@ class WordPieceTokenizer(context: Context) {
 
     // 기본 토큰화 (BasicTokenizer 역할 부분)
     private fun basicTokenize(text: String): List<String> {
-        val cleanedText = text.lowercase(Locale.getDefault()) // 소문자 변환
-            .replace(Regex("[^\uAC00-\uD7AFa-zA-Z0-9.,!?% ]"), " ") // 한글, 영어, 숫자, 기본 문장 부호 외 제거하고 공백으로
-            .replace(Regex("\\s+"), " ") // 여러 공백을 단일 공백으로
-            .trim()
+        val cleanedText =
+            text.lowercase(Locale.getDefault()) // 소문자 변환
+                .replace(Regex("[^\uAC00-\uD7AFa-zA-Z0-9.,!?% ]"), " ") // 한글, 영어, 숫자, 기본 문장 부호 외 제거하고 공백으로
+                .replace(Regex("\\s+"), " ") // 여러 공백을 단일 공백으로
+                .trim()
 
         // 문장 부호와 단어 분리
         // 예: "안녕하세요!." -> "안녕하세요", "!", "."
@@ -100,7 +101,10 @@ class WordPieceTokenizer(context: Context) {
     }
 
     // 최종 인코딩 함수
-    fun encode(text: String, maxLength: Int = 128): Pair<List<Int>, List<Int>> {
+    fun encode(
+        text: String,
+        maxLength: Int = 128,
+    ): Pair<List<Int>, List<Int>> {
         Log.d("WordPieceTokenizer", "원본 스트링: $text")
 
         val basicTokens = basicTokenize(text) // 기본 토큰화

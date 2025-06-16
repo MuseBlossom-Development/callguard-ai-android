@@ -21,7 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -77,9 +76,10 @@ class SplashActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivitySplashBinding.inflate(layoutInflater).apply {
-            setContentView(root)
-        }
+        binding =
+            ActivitySplashBinding.inflate(layoutInflater).apply {
+                setContentView(root)
+            }
 
         // Firebase Auth 초기화
         auth = FirebaseAuth.getInstance()
@@ -144,11 +144,12 @@ class SplashActivity : AppCompatActivity() {
         CallGuardApplication.setTestModeEnabled(newMode)
 
         // 사용자에게 알림
-        val message = if (newMode) {
-            "🧪 테스트 모드가 활성화되었습니다!\n전화 수신 시 ${CallGuardApplication.getTestAudioFile()} 파일을 필사합니다."
-        } else {
-            "📱 일반 모드로 전환되었습니다.\n실제 통화 녹음을 진행합니다."
-        }
+        val message =
+            if (newMode) {
+                "🧪 테스트 모드가 활성화되었습니다!\n전화 수신 시 ${CallGuardApplication.getTestAudioFile()} 파일을 필사합니다."
+            } else {
+                "📱 일반 모드로 전환되었습니다.\n실제 통화 녹음을 진행합니다."
+            }
 
         // AlertDialog로 상세한 안내 제공
         AlertDialog.Builder(this)
@@ -170,8 +171,8 @@ class SplashActivity : AppCompatActivity() {
                 vibrator.vibrate(
                     android.os.VibrationEffect.createOneShot(
                         200,
-                        android.os.VibrationEffect.DEFAULT_AMPLITUDE
-                    )
+                        android.os.VibrationEffect.DEFAULT_AMPLITUDE,
+                    ),
                 )
             } else {
                 vibrator.vibrate(200)
@@ -197,59 +198,62 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun initView() {
-
     }
 
-    private fun fadeInViewsSequentially(view1: View, view2: View, duration: Long) {
+    private fun fadeInViewsSequentially(
+        view1: View,
+        view2: View,
+        duration: Long,
+    ) {
         // 첫 번째 뷰의 alpha 값을 0으로 설정 (투명)
         view1.alpha = 0f
         view2.alpha = 0f
 
         // 첫 번째 뷰의 alpha 값을 1로 애니메이션
-        val fadeIn1 = ObjectAnimator.ofFloat(view1, "alpha", 0f, 1f).apply {
-            this.duration = duration
-        }
+        val fadeIn1 =
+            ObjectAnimator.ofFloat(view1, "alpha", 0f, 1f).apply {
+                this.duration = duration
+            }
 
         // 첫 번째 애니메이션이 끝난 후 두 번째 뷰의 애니메이션을 시작
-        fadeIn1.addListener(object : Animator.AnimatorListener {
-            override fun onAnimationStart(animation: Animator) {
-
-            }
-
-            override fun onAnimationEnd(animation: Animator) {
-                // 첫 번째 뷰가 페이드인 후 두 번째 뷰의 애니메이션 시작
-                val fadeIn2 = ObjectAnimator.ofFloat(view2, "alpha", 0f, 1f).apply {
-                    this.duration = duration
+        fadeIn1.addListener(
+            object : Animator.AnimatorListener {
+                override fun onAnimationStart(animation: Animator) {
                 }
 
-                fadeIn2.addListener(object : Animator.AnimatorListener {
-                    override fun onAnimationStart(animation: Animator) {
+                override fun onAnimationEnd(animation: Animator) {
+                    // 첫 번째 뷰가 페이드인 후 두 번째 뷰의 애니메이션 시작
+                    val fadeIn2 =
+                        ObjectAnimator.ofFloat(view2, "alpha", 0f, 1f).apply {
+                            this.duration = duration
+                        }
 
-                    }
+                    fadeIn2.addListener(
+                        object : Animator.AnimatorListener {
+                            override fun onAnimationStart(animation: Animator) {
+                            }
 
-                    override fun onAnimationEnd(animation: Animator) {
-                        checkModelAndAuth()
-                    }
+                            override fun onAnimationEnd(animation: Animator) {
+                                checkModelAndAuth()
+                            }
 
-                    override fun onAnimationCancel(animation: Animator) {
+                            override fun onAnimationCancel(animation: Animator) {
+                            }
 
-                    }
+                            override fun onAnimationRepeat(animation: Animator) {
+                            }
+                        },
+                    )
+                    fadeIn2.start()
+                }
 
-                    override fun onAnimationRepeat(animation: Animator) {
+                override fun onAnimationCancel(animation: Animator) {
+                }
 
-                    }
-
-                })
-                fadeIn2.start()
-            }
-
-            override fun onAnimationCancel(animation: Animator) {
-
-            }
-
-            override fun onAnimationRepeat(animation: Animator) {
-            }
-        })
+                override fun onAnimationRepeat(animation: Animator) {
+                }
+            },
+        )
         fadeIn1.start()
     }
 
@@ -302,20 +306,22 @@ class SplashActivity : AppCompatActivity() {
 
         // 모든 권한이 이미 완료되었는지 체크
         val hasOverlayPermission = Settings.canDrawOverlays(applicationContext)
-        val hasAccessibilityPermission = isAccessibilityServiceEnabled(
-            applicationContext,
-            com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
-        )
+        val hasAccessibilityPermission =
+            isAccessibilityServiceEnabled(
+                applicationContext,
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
+            )
 
         if (hasOverlayPermission && hasAccessibilityPermission) {
             statusTextView.text = "${testModePrefix}설정 완료"
 
             // 테스트 모드 상태를 포함한 완료 메시지
-            val completionMessage = if (CallGuardApplication.isTestModeEnabled()) {
-                "🧪 CallGuardAI 테스트 모드 준비 완료!\n전화 수신 시 테스트 파일을 필사합니다."
-            } else {
-                "CallGuardAI 준비 완료! 🎉"
-            }
+            val completionMessage =
+                if (CallGuardApplication.isTestModeEnabled()) {
+                    "🧪 CallGuardAI 테스트 모드 준비 완료!\n전화 수신 시 테스트 파일을 필사합니다."
+                } else {
+                    "CallGuardAI 준비 완료! 🎉"
+                }
 
             Toast.makeText(this, completionMessage, Toast.LENGTH_LONG).show()
 
@@ -345,12 +351,16 @@ class SplashActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun isAccessibilityServiceEnabled(context: Context, service: Class<*>): Boolean {
+    private fun isAccessibilityServiceEnabled(
+        context: Context,
+        service: Class<*>,
+    ): Boolean {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
+        val enabledServices =
+            Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
 
         val colonSplitter = TextUtils.SimpleStringSplitter(':')
         colonSplitter.setString(enabledServices)
@@ -358,7 +368,7 @@ class SplashActivity : AppCompatActivity() {
             val componentName = colonSplitter.next()
             if (componentName.equals(
                     ComponentName(context, service).flattenToString(),
-                    ignoreCase = true
+                    ignoreCase = true,
                 )
             ) {
                 return true
@@ -368,7 +378,6 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun showOverlayPermissionDialog(context: Context) {
-
         dialogPlus.show()
 
         val imageList = ArrayList<SlideModel>() // Create image list
@@ -383,7 +392,6 @@ class SplashActivity : AppCompatActivity() {
             // 권한 체크 작업 시작
             startPermissionCheck()
         }
-
     }
 
     private fun startPermissionCheck() {
@@ -391,26 +399,27 @@ class SplashActivity : AppCompatActivity() {
         permissionCheckJob?.cancel()
 
         // 새로운 권한 체크 작업 시작
-        permissionCheckJob = lifecycleScope.launch {
-            while (isActive) {
-                delay(1000) // 1초마다 체크
+        permissionCheckJob =
+            lifecycleScope.launch {
+                while (isActive) {
+                    delay(1000) // 1초마다 체크
 
-                if (Settings.canDrawOverlays(applicationContext)) {
-                    // 앱을 foreground로 가져오기
-                    val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
-                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(bringToFrontIntent)
+                    if (Settings.canDrawOverlays(applicationContext)) {
+                        // 앱을 foreground로 가져오기
+                        val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
+                        bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(bringToFrontIntent)
 
-                    if (dialogPlus.isShowing) {
-                        dialogPlus.dismiss()
-                        moveToEtcPermissionActivity()
+                        if (dialogPlus.isShowing) {
+                            dialogPlus.dismiss()
+                            moveToEtcPermissionActivity()
+                        }
+
+                        break // 루프 종료
                     }
-
-                    break // 루프 종료
                 }
             }
-        }
     }
 
     private fun moveToEtcPermissionActivity() {
@@ -426,10 +435,11 @@ class SplashActivity : AppCompatActivity() {
     private fun openAccessibilitySettings() {
         try {
             // 앱의 접근성 서비스 정보
-            val componentName = ComponentName(
-                packageName,
-                "com.museblossom.callguardai.util.etc.MyAccessibilityService"
-            )
+            val componentName =
+                ComponentName(
+                    packageName,
+                    "com.museblossom.callguardai.util.etc.MyAccessibilityService",
+                )
             val settingsComponentName = componentName.flattenToString()
 
             // 먼저 앱의 접근성 서비스 설정으로 직접 이동 시도
@@ -453,7 +463,6 @@ class SplashActivity : AppCompatActivity() {
 
             // 권한 체크 작업 시작
             startAccessibilityPermissionCheck()
-
         } catch (e: Exception) {
             // 실패 시 일반 접근성 설정으로 이동
             try {
@@ -475,44 +484,44 @@ class SplashActivity : AppCompatActivity() {
         permissionCheckJob?.cancel()
 
         // 새로운 권한 체크 작업 시작
-        permissionCheckJob = lifecycleScope.launch {
-            while (isActive) {
-                delay(1000) // 1초마다 체크
+        permissionCheckJob =
+            lifecycleScope.launch {
+                while (isActive) {
+                    delay(1000) // 1초마다 체크
 
-                if (isAccessibilityServiceEnabled(
-                        applicationContext,
-                        com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
-                    )
-                ) {
+                    if (isAccessibilityServiceEnabled(
+                            applicationContext,
+                            com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
+                        )
+                    ) {
+                        // 앱을 foreground로 가져오기
+                        val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
+                        bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(bringToFrontIntent)
 
-                    // 앱을 foreground로 가져오기
-                    val bringToFrontIntent = Intent(this@SplashActivity, SplashActivity::class.java)
-                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                    bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(bringToFrontIntent)
+                        // 설정 완료 메시지 표시 후 앱 종료
+                        Toast.makeText(
+                            this@SplashActivity,
+                            "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.",
+                            Toast.LENGTH_LONG,
+                        ).show()
 
-                    // 설정 완료 메시지 표시 후 앱 종료
-                    Toast.makeText(
-                        this@SplashActivity,
-                        "설정이 완료되었습니다. CallGuardAI가 백그라운드에서 동작합니다.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        // 잠시 후 앱 종료
+                        delay(2000)
+                        finishAffinity() // 모든 액티비티 종료
 
-                    // 잠시 후 앱 종료
-                    delay(2000)
-                    finishAffinity() // 모든 액티비티 종료
-
-                    break // 루프 종료
+                        break // 루프 종료
+                    }
                 }
             }
-        }
     }
 
     // EtcPermissonActivity에서도 접근성 권한을 확인하고 설정하도록 수정
     private fun checkAndRequestAccessibilityPermission() {
         if (!isAccessibilityServiceEnabled(
                 applicationContext,
-                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java
+                com.museblossom.callguardai.util.etc.MyAccessibilityService::class.java,
             )
         ) {
             // 접근성 권한이 없으면 설정 화면으로 이동
@@ -527,10 +536,11 @@ class SplashActivity : AppCompatActivity() {
 
     private fun checkOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
+            val intent =
+                Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:$packageName"),
+                )
             // 설정 화면에서 돌아올 때 앱으로 자동 복귀하도록 플래그 추가
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             intent.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
@@ -539,49 +549,50 @@ class SplashActivity : AppCompatActivity() {
         }
     }
 
+    private val activityResultLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult(),
+        ) {
+            if (Settings.canDrawOverlays(this)) {
+                // 앱을 foreground로 가져오기
+                val bringToFrontIntent = Intent(this, SplashActivity::class.java)
+                bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                startActivity(bringToFrontIntent)
 
-    private val activityResultLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (Settings.canDrawOverlays(this)) {
-            // 앱을 foreground로 가져오기
-            val bringToFrontIntent = Intent(this, SplashActivity::class.java)
-            bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            bringToFrontIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(bringToFrontIntent)
-
-            if (dialogPlus.isShowing) {
-                dialogPlus.dismiss()
-                moveToEtcPermissionActivity()
+                if (dialogPlus.isShowing) {
+                    dialogPlus.dismiss()
+                    moveToEtcPermissionActivity()
+                }
+            } else {
+                showOverlayPermissionDialog(applicationContext)
             }
-        } else {
-            showOverlayPermissionDialog(applicationContext)
         }
-    }
 
     private fun dialogSetting() {
         customView = PermissionOverlayDialogBinding.inflate(layoutInflater)
         viewHolder = ViewHolder(customView.root)
 
         val originalStatusBarColor = window.statusBarColor
-        window.statusBarColor = ContextCompat.getColor(this,R.color.dialogplus_black_overlay)
+        window.statusBarColor = ContextCompat.getColor(this, R.color.dialogplus_black_overlay)
 
-        dialogPlus = DialogPlus.newDialog(this@SplashActivity)
-            .setContentBackgroundResource(R.drawable.dialog_round)
-            .setContentHolder(viewHolder)
-            .setCancelable(false)
-            .setInAnimation(R.anim.dialog_slide_up_fade_in)
-            .setOnDismissListener {
-                window.statusBarColor = originalStatusBarColor
-            }
-            .setExpanded(false)
-            .create()
+        dialogPlus =
+            DialogPlus.newDialog(this@SplashActivity)
+                .setContentBackgroundResource(R.drawable.dialog_round)
+                .setContentHolder(viewHolder)
+                .setCancelable(false)
+                .setInAnimation(R.anim.dialog_slide_up_fade_in)
+                .setOnDismissListener {
+                    window.statusBarColor = originalStatusBarColor
+                }
+                .setExpanded(false)
+                .create()
     }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
-        grantResults: IntArray
+        grantResults: IntArray,
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
@@ -600,11 +611,11 @@ class SplashActivity : AppCompatActivity() {
 
             if (!permissionsGranted && !isPause) {
                 // 권한이 거부된 경우 다이얼로그 표시
-                if (deniedPermissions.size == 1){
+                if (deniedPermissions.size == 1) {
                     if (deniedPermissions.contains("android.permission.SYSTEM_ALERT_WINDOW")) {
-                        //moveToMainActivity()
+                        // moveToMainActivity()
                     }
-                }else{
+                } else {
                     isPause = true // 다이얼로그가 표시되었음을 표시
                     showEtcPermission(this@SplashActivity)
                 }
@@ -616,31 +627,31 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun showEtcPermission(context: Context) {
-
         AlertDialog.Builder(context)
             .setTitle("권한 요청")
             .setMessage("앱이 원활하게 작동하려면 모든 권한이 필요합니다. 권한을 활성화해 주세요.")
             .setCancelable(false)
             .setPositiveButton("권한 수락하기") { _, _ ->
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = Uri.parse("package:" + applicationContext.packageName)
-                }
+                val intent =
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = Uri.parse("package:" + applicationContext.packageName)
+                    }
                 isPause = true
                 startActivity(intent)
             }
             .show()
     }
 
-    private fun checkModelExists(): Boolean{
+    private fun checkModelExists(): Boolean {
         val ggmlFile = File(filesDir, "ggml-small.bin")
         return if (ggmlFile.exists()) {
             true
-        }else{
+        } else {
             false
         }
     }
 
-    private fun downloadModel(){
+    private fun downloadModel() {
         viewModel.ensureGgmlFile()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {

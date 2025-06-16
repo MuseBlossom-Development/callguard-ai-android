@@ -18,7 +18,10 @@ object ContactsUtils {
      * @param phoneNumber 조회할 전화번호
      * @return 연락처 이름 (없으면 null)
      */
-    fun getContactName(context: Context, phoneNumber: String): String? {
+    fun getContactName(
+        context: Context,
+        phoneNumber: String,
+    ): String? {
         try {
             // 권한 확인
             if (!hasContactsPermission(context)) {
@@ -30,19 +33,22 @@ object ContactsUtils {
             val numbers = generatePhoneNumberVariants(phoneNumber)
             Log.d(
                 TAG,
-                "${context.getString(R.string.log_call_record_query_result)}: 원본=$phoneNumber, 변형=${numbers.joinToString()}"
+                "${context.getString(
+                    R.string.log_call_record_query_result,
+                )}: 원본=$phoneNumber, 변형=${numbers.joinToString()}",
             )
 
-            val cursor = context.contentResolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(
-                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                    ContactsContract.CommonDataKinds.Phone.NUMBER
-                ),
-                null,
-                null,
-                null
-            )
+            val cursor =
+                context.contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(
+                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                        ContactsContract.CommonDataKinds.Phone.NUMBER,
+                    ),
+                    null,
+                    null,
+                    null,
+                )
 
             cursor?.use {
                 while (it.moveToNext()) {
@@ -63,7 +69,9 @@ object ContactsUtils {
                                 if (searchNum == storedNum) {
                                     Log.d(
                                         TAG,
-                                        "${context.getString(R.string.contact_found)}: $phoneNumber -> $name (매칭: $searchNum = $storedNum)"
+                                        "${context.getString(
+                                            R.string.contact_found,
+                                        )}: $phoneNumber -> $name (매칭: $searchNum = $storedNum)",
                                     )
                                     return name
                                 }
@@ -75,7 +83,6 @@ object ContactsUtils {
 
             Log.d(TAG, "${context.getString(R.string.contact_not_found)}: $phoneNumber")
             return null
-
         } catch (e: Exception) {
             Log.e(TAG, context.getString(R.string.contact_query_error), e)
             return null
@@ -88,7 +95,10 @@ object ContactsUtils {
      * @param contactName 연락처 이름 (없으면 null)
      * @return 표시용 문자열
      */
-    fun formatPhoneDisplay(phoneNumber: String, contactName: String?): String {
+    fun formatPhoneDisplay(
+        phoneNumber: String,
+        contactName: String?,
+    ): String {
         return if (contactName != null) {
             "$contactName ($phoneNumber)"
         } else {
@@ -103,13 +113,14 @@ object ContactsUtils {
      */
     fun hasContactsPermission(context: Context): Boolean {
         return try {
-            val cursor = context.contentResolver.query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
-                null,
-                null,
-                null
-            )
+            val cursor =
+                context.contentResolver.query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME),
+                    null,
+                    null,
+                    null,
+                )
             cursor?.close()
             true
         } catch (e: SecurityException) {
@@ -144,17 +155,17 @@ object ContactsUtils {
                     "${numbersOnly.substring(0, 3)}-${
                         numbersOnly.substring(
                             3,
-                            7
+                            7,
                         )
-                    }-${numbersOnly.substring(7)}"
+                    }-${numbersOnly.substring(7)}",
                 )
                 variants.add(
                     "${numbersOnly.substring(0, 3)} ${
                         numbersOnly.substring(
                             3,
-                            7
+                            7,
                         )
-                    } ${numbersOnly.substring(7)}"
+                    } ${numbersOnly.substring(7)}",
                 )
             }
         }

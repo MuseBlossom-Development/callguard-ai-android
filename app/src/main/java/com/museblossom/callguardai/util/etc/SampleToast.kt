@@ -2,7 +2,6 @@ package com.museblossom.callguardai.util.etc
 
 import android.content.Context
 import android.content.res.Resources
-import android.view.Gravity
 import android.view.LayoutInflater
 import android.widget.Toast
 import androidx.databinding.DataBindingUtil
@@ -10,8 +9,10 @@ import com.museblossom.callguardai.R
 import com.museblossom.callguardai.databinding.ToastSampleBinding
 
 object SampleToast {
-
-    fun createToast(context: Context, message: String): Toast? {
+    fun createToast(
+        context: Context,
+        message: String,
+    ): Toast? {
         val inflater = LayoutInflater.from(context)
         val binding: ToastSampleBinding =
             DataBindingUtil.inflate(inflater, R.layout.toast_sample, null, false)

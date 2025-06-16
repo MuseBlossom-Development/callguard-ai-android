@@ -3,15 +3,14 @@ package com.museblossom.callguardai.ui.activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
-import android.view.View.GONE
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
-import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.lifecycleScope
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -47,22 +46,25 @@ class LoginActivity : AppCompatActivity() {
     }
 
     private fun signInWithGoogle() {
-        val googleIdOption: GetGoogleIdOption = GetGoogleIdOption.Builder()
-            .setServerClientId(getString(R.string.default_web_client_id))
-            .setFilterByAuthorizedAccounts(false)
-            .setAutoSelectEnabled(false)
-            .build()
+        val googleIdOption: GetGoogleIdOption =
+            GetGoogleIdOption.Builder()
+                .setServerClientId(getString(R.string.default_web_client_id))
+                .setFilterByAuthorizedAccounts(false)
+                .setAutoSelectEnabled(false)
+                .build()
 
-        val request: GetCredentialRequest = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
-            .build()
+        val request: GetCredentialRequest =
+            GetCredentialRequest.Builder()
+                .addCredentialOption(googleIdOption)
+                .build()
 
         lifecycleScope.launch {
             try {
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = this@LoginActivity,
-                )
+                val result =
+                    credentialManager.getCredential(
+                        request = request,
+                        context = this@LoginActivity,
+                    )
                 handleSignIn(result)
             } catch (e: GetCredentialException) {
                 Log.e("구글로그인", "자격증명 요청 오류: ${e::class.java.simpleName}", e)
@@ -71,21 +73,21 @@ class LoginActivity : AppCompatActivity() {
                         Toast.makeText(
                             this@LoginActivity,
                             "Google 계정을 찾을 수 없습니다.\n설정 > 계정에서 Google 계정을 추가해주세요.",
-                            Toast.LENGTH_LONG
+                            Toast.LENGTH_LONG,
                         ).show()
                     }
                     is GetCredentialCancellationException -> {
                         Toast.makeText(
                             this@LoginActivity,
                             "로그인이 취소되었습니다.",
-                            Toast.LENGTH_SHORT
+                            Toast.LENGTH_SHORT,
                         ).show()
                     }
                     else -> {
                         Toast.makeText(
                             this@LoginActivity,
                             "Google 로그인에 실패했습니다.\nGoogle Play Services를 업데이트하거나 잠시 후 다시 시도해주세요.",
-                            Toast.LENGTH_LONG
+                            Toast.LENGTH_LONG,
                         ).show()
                     }
                 }
@@ -106,7 +108,6 @@ class LoginActivity : AppCompatActivity() {
 
                     // 자체 서버로 토큰 전송하여 검증
                     sendTokenToServer(googleIdToken)
-
                 } catch (e: GoogleIdTokenParsingException) {
                     Log.e("구글로그인", "구글 ID 토큰 파싱 오류", e)
                     Toast.makeText(this, "Google ID 토큰 파싱에 실패했습니다.", Toast.LENGTH_SHORT).show()
@@ -137,7 +138,7 @@ class LoginActivity : AppCompatActivity() {
 
     private fun sendTokenToServer(googleIdToken: String) {
         // 구글 로그인 성공 후 약관 동의 페이지로 이동
-        Log.d("서버통신", "약관 동의 페이지로 이동, 토큰: ${googleIdToken}")
+        Log.d("서버통신", "약관 동의 페이지로 이동, 토큰: $googleIdToken")
 
         val intent = Intent(this, TermsAgreementActivity::class.java)
         intent.putExtra("google_id_token", googleIdToken)
