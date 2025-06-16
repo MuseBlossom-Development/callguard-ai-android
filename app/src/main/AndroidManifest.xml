@@ -145,5 +145,15 @@
             </intent-filter>
         </service>
 
+        <!-- 통화 감지 토글 리시버 (알림 액션 버튼용) -->
+        <receiver
+            android:name=".util.receiver.CallDetectionToggleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.museblossom.callguardai.ENABLE_CALL_DETECTION" />
+                <action android:name="com.museblossom.callguardai.DISABLE_CALL_DETECTION" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

@@ -138,6 +138,16 @@ class PhoneBroadcastReceiver : BroadcastReceiver() {
         // PHONE_STATE_CHANGED만 처리 - 수신 전화만 모니터링
         if (action == TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
 
+            // 통화감지 설정 확인
+            val sharedPrefs =
+                context.getSharedPreferences("CallGuardAI_Settings", Context.MODE_PRIVATE)
+            val isCallDetectionEnabled = sharedPrefs.getBoolean("call_detection_enabled", true)
+
+            if (!isCallDetectionEnabled) {
+                Log.d("PhoneBroadcastReceiver", "${testModePrefix}통화 감지가 비활성화되어 있으므로 서비스를 시작하지 않음")
+                return
+            }
+
             // 원본 브로드캐스트 Intent 복제 → extras 보존
             val svcIntent = Intent(intent).apply {
                 setClass(context, CallRecordingService::class.java)

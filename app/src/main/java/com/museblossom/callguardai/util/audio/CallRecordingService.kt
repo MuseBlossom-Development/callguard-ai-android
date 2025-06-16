@@ -4,6 +4,7 @@ import android.app.KeyguardManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
 import android.graphics.Color
 import android.graphics.PixelFormat
@@ -68,7 +69,9 @@ import kotlinx.coroutines.tasks.await
  */
 @AndroidEntryPoint
 class CallRecordingService : Service() {
-
+    // SharedPreferences for call detection setting
+    private lateinit var sharedPreferences: SharedPreferences
+    
     @Inject
     lateinit var analyzeAudioUseCase: AnalyzeAudioUseCase
 
@@ -147,6 +150,10 @@ class CallRecordingService : Service() {
         @Volatile
         private var serviceInstance: CallRecordingService? = null
 
+        // Settings constants
+        private const val PREFS_NAME = "CallGuardAI_Settings"
+        private const val KEY_CALL_DETECTION_ENABLED = "call_detection_enabled"
+
         /**
          * 현재 오버레이 뷰가 화면에 표시되고 있는지 확인
          * @return 오버레이 뷰 표시 여부
@@ -203,12 +210,25 @@ class CallRecordingService : Service() {
     override fun onCreate() {
         super.onCreate()
         serviceInstance = this
+        
+        // Initialize SharedPreferences
+        sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        // 통화감지가 비활성화되어 있으면 서비스를 시작하지 않음
+        if (!isCallDetectionEnabled()) {
+            Log.d(TAG, "통화 감지가 비활성화되어 있으므로 서비스를 시작하지 않음")
+            stopSelf()
+            return
+        }
 
         // ViewModel 주입 제거 - 대신 UseCase 직접 사용
         initializeWhisperModel()
         initializeRecorder()
         initializeWindowManager()
         setNotification()
+        Log.d(TAG, "통화녹음서비스 시작")
+        Log.d(TAG, "통화녹음서비스 시작")
+        Log.d(TAG, "통화녹음서비스 시작")
 
         // 상태 변경 감지
         serviceScope.launch {
@@ -452,6 +472,12 @@ class CallRecordingService : Service() {
     }
 
     private fun handlePhoneState(intent: Intent) {
+        // 통화감지 설정 확인
+        if (!isCallDetectionEnabled()) {
+            Log.d(TAG, "통화 감지가 비활성화되어 있으므로 처리하지 않음")
+            return
+        }
+        
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
         val phoneNumber = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
         val cachedNumber = intent.getStringExtra("CACHED_PHONE_NUMBER")
@@ -1305,6 +1331,14 @@ class CallRecordingService : Service() {
      * 최종 정리 작업
      */
     private fun performFinalCleanup() {
+        // 포그라운드 서비스 중지 및 알림 제거
+        try {
+            stopForeground(true) // true = 알림도 함께 제거
+            Log.d(TAG, "포그라운드 서비스 및 알림 제거 완료")
+        } catch (e: Exception) {
+            Log.w(TAG, "포그라운드 서비스 중지 중 오류: ${e.message}")
+        }
+
         removeOverlayView()
 
         // 통화 관련 변수 초기화
@@ -1320,10 +1354,20 @@ class CallRecordingService : Service() {
     /**
      * 시간을 MM:SS 형식으로 포맷팅
      */
+    /**
+     * 시간을 MM:SS 형식으로 포맷팅
+     */
     private fun formatTime(seconds: Int): String {
         val minutes = seconds / 60
         val remainingSeconds = seconds % 60
         return String.format("%02d:%02d", minutes, remainingSeconds)
+    }
+
+    /**
+     * 통화감지 설정 확인
+     */
+    private fun isCallDetectionEnabled(): Boolean {
+        return sharedPreferences.getBoolean(KEY_CALL_DETECTION_ENABLED, true) // 기본값: 활성화
     }
 
     /**

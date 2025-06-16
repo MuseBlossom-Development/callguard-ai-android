@@ -1,8 +1,11 @@
 package com.museblossom.callguardai.ui.activity
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.text.TextUtils
@@ -12,25 +15,39 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
-import com.museblossom.callguardai.R
-import com.museblossom.callguardai.util.etc.MyAccessibilityService
-import com.museblossom.callguardai.util.etc.setOnSingleClickListener
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import com.museblossom.callguardai.R
+import com.museblossom.callguardai.util.etc.MyAccessibilityService
+import com.museblossom.callguardai.util.etc.setOnSingleClickListener
+import com.museblossom.callguardai.util.receiver.CallDetectionToggleReceiver
 
 class AccessibilityPermissionActivity : AppCompatActivity() {
 
     private var permissionCheckJob: Job? = null
     private var isAccessibilityCheckInProgress = false
 
+    // SharedPreferences for call detection setting
+    private lateinit var sharedPreferences: SharedPreferences
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContentView(R.layout.activity_accessibility_permission)
+
+        // Initialize SharedPreferences
+        sharedPreferences = getSharedPreferences("CallGuardAI_Settings", Context.MODE_PRIVATE)
 
         Log.d("AccessibilityPermission", "===== 접근성 권한 액티비티 시작 =====")
 
@@ -172,11 +189,6 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
                 checkCount++
 
                 val hasAccessibilityPermission = isAccessibilityServiceEnabled()
-//
-//                Log.d(
-//                    "AccessibilityPermission",
-//                    "접근성 권한 체크 ${checkCount}회 (${checkCount * 0.1}초): $hasAccessibilityPermission"
-//                )
 
                 if (hasAccessibilityPermission) {
                     Log.d("AccessibilityPermission", "접근성 권한 자동 감지됨! (${checkCount * 0.1}초 후)")
@@ -243,6 +255,9 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
     private fun finishWithSuccess() {
         Log.d("AccessibilityPermission", "접근성 권한 완료 - 모든 설정 완료")
 
+        // 상시 알림 표시 (접근성 권한 승인 후 항상 유지)
+        showPersistentNotification()
+
         // 완료 메시지 표시
         Toast.makeText(
             this,
@@ -269,6 +284,87 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             finishAffinity()
             Log.d("AccessibilityPermission", "모든 권한 설정 완료 - 앱 종료")
         }
+    }
+
+    /**
+     * 상시 알림 표시 (접근성 권한 승인 후 항상 유지)
+     */
+    private fun showPersistentNotification() {
+        try {
+            val isCallDetectionEnabled = getCallDetectionEnabled()
+            val statusText = if (isCallDetectionEnabled) "통화 감지 활성화됨" else "통화 감지 비활성화됨"
+
+            val toggleAction =
+                if (isCallDetectionEnabled) CallDetectionToggleReceiver.ACTION_DISABLE_CALL_DETECTION else CallDetectionToggleReceiver.ACTION_ENABLE_CALL_DETECTION
+            val toggleText = if (isCallDetectionEnabled) "비활성화" else "활성화"
+            val toggleIntent = Intent(toggleAction).apply {
+                setPackage(packageName)
+            }
+            val togglePendingIntent = PendingIntent.getBroadcast(
+                this, 0, toggleIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val channelId = getString(R.string.channel_id__call_recording)
+            val notification = NotificationCompat.Builder(this, channelId)
+                .setContentTitle("CallGuardAI 보호")
+                .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
+                .setSmallIcon(R.drawable.app_logo)
+                .setPriority(NotificationCompat.PRIORITY_LOW) // 낮은 우선순위로 조용히 표시
+                .setAutoCancel(false) // 삭제 불가능
+                .setOngoing(true) // 지속적 표시
+                .addAction(
+                    R.drawable.app_logo,
+                    toggleText,
+                    togglePendingIntent
+                )
+                .build()
+
+            // Check notification permission for Android 13+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    Log.w("AccessibilityPermission", "알림 권한이 없어서 상시 알림을 표시할 수 없습니다")
+                    return
+                }
+            }
+
+            val notificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(
+                CallDetectionToggleReceiver.PERSISTENT_NOTIFICATION_ID,
+                notification
+            )
+
+            Log.d("AccessibilityPermission", "상시 알림 표시됨 - 통화감지: $isCallDetectionEnabled")
+        } catch (e: Exception) {
+            Log.e("AccessibilityPermission", "상시 알림 표시 실패", e)
+        }
+    }
+
+    /**
+     * 통화감지 설정 저장
+     */
+    private fun setCallDetectionEnabled(enabled: Boolean) {
+        sharedPreferences.edit()
+            .putBoolean(CallDetectionToggleReceiver.KEY_CALL_DETECTION_ENABLED, enabled)
+            .apply()
+
+        val statusMessage = if (enabled) "통화 감지가 활성화되었습니다" else "통화 감지가 비활성화되었습니다"
+        Toast.makeText(this, statusMessage, Toast.LENGTH_SHORT).show()
+
+        Log.d("AccessibilityPermission", "통화감지 설정 변경: $enabled")
+    }
+
+    /**
+     * 통화감지 설정 읽기
+     */
+    private fun getCallDetectionEnabled(): Boolean {
+        return sharedPreferences.getBoolean(
+            CallDetectionToggleReceiver.KEY_CALL_DETECTION_ENABLED,
+            true
+        ) // 기본값: 활성화
     }
 
     override fun onDestroy() {
