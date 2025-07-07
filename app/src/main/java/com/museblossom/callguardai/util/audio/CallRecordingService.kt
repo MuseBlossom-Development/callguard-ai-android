@@ -37,15 +37,19 @@ import com.museblossom.callguardai.util.recorder.Recorder
 import com.museblossom.callguardai.util.wave.decodeWaveFile
 import com.whispercpp.whisper.WhisperContext
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.*
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.*
 import javax.inject.Inject
 
 /**
@@ -90,6 +94,10 @@ class CallRecordingService : Service() {
     private var currentPhoneNumber: String? = null
     private var callStartTime: Long = 0
     private var currentCDNUploadPath: String? = null
+
+    // 20초 분할 전송 제한 관련 변수
+    private var segmentUploadCount = 0
+    private val maxSegmentUploads = 10 // 20초 x 10 = 총 200초
 
     // UI 관련
     private lateinit var windowManager: WindowManager
@@ -336,9 +344,13 @@ class CallRecordingService : Service() {
                         )
                     }
 
-                    // 20초마다 세그먼트 파일 처리 (15초 → 20초로 변경)
-                    if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0) {
-                        Log.d(TAG, "🎙️ 20초 세그먼트 처리 - 녹음 재시작 (경과시간: ${elapsedSeconds}초)")
+                    // 20초마다 세그먼트 파일 처리 (최대 10회)
+                    if (elapsedSeconds > 0 && elapsedSeconds % 20 == 0 && segmentUploadCount < maxSegmentUploads) {
+                        segmentUploadCount++
+                        Log.d(
+                            TAG,
+                            "🎙️ 20초 세그먼트 처리 (${segmentUploadCount}/${maxSegmentUploads}) - 녹음 재시작 (경과시간: ${elapsedSeconds}초)"
+                        )
                         serviceScope.launch {
                             // 분석을 위해 현재 녹음 중지하고 재시작
                             withContext(Dispatchers.Main) {
@@ -693,17 +705,20 @@ class CallRecordingService : Service() {
     }
 
     private fun changeWarningBackground(view: View) {
-        val newBackground = resources.getDrawable(R.drawable.call_widget_warning_background)
+        val newBackground =
+            androidx.core.content.ContextCompat.getDrawable(this, R.drawable.call_widget_warning_background)
         view.background = newBackground
     }
 
     private fun changeSuccessBackground(view: View) {
-        val newBackground = resources.getDrawable(R.drawable.call_widget_success_background)
+        val newBackground =
+            androidx.core.content.ContextCompat.getDrawable(this, R.drawable.call_widget_success_background)
         view.background = newBackground
     }
 
     private fun changeCautionBackground(view: View) {
-        val newBackground = resources.getDrawable(R.drawable.call_widget_caution_background)
+        val newBackground =
+            androidx.core.content.ContextCompat.getDrawable(this, R.drawable.call_widget_caution_background)
         view.background = newBackground
     }
 
@@ -940,12 +955,14 @@ class CallRecordingService : Service() {
             updateDeepVoiceStatus(isDetected)
             hasInitialAnalysisCompleted = true
 
+            // 확률에 관계없이 UI 업데이트 (정상/합성보이스 확률 표시)
+            handleDeepVoice(probability)
+
             if (isDetected) {
                 Log.i(TAG, "딥보이스 감지됨 (확률: $probability%)")
                 if (recorder.getVibrate()) {
                     recorder.vibrateWithPattern(applicationContext)
                 }
-                handleDeepVoice(probability)
             }
 
             // 데이터베이스 저장
@@ -972,12 +989,14 @@ class CallRecordingService : Service() {
 
             val probability = if (isPhishing) 90 else 10
 
+            // 확률에 관계없이 UI 업데이트 (정상/보이스피싱 감지됨 표시)
+            handlePhishing(text, isPhishing)
+
             if (isPhishing) {
                 Log.i(TAG, "피싱 감지됨: $text")
                 if (recorder.getVibrate()) {
                     recorder.vibrateWithPattern(applicationContext)
                 }
-                handlePhishing(text, isPhishing)
             }
 
             // 데이터베이스 저장
@@ -1000,7 +1019,8 @@ class CallRecordingService : Service() {
             val binding = bindingNormal ?: return@launch
 
             binding.deepVoicePercentTextView1.setText("$probability%")
-            binding.deepVoiceTextView1.text = "합성보이스 확률"
+            // 40% 미만일 때는 "정상" 표시
+            binding.deepVoiceTextView1.text = if (probability < 40) "정상" else "합성보이스 확률"
 
             // 텍스트 색상 변경 (RollingTextView는 일반 TextView 메서드 사용)
             val textColor =
@@ -1036,7 +1056,7 @@ class CallRecordingService : Service() {
         serviceScope.launch(Dispatchers.Main) {
             if (bindingNormal == null) return@launch
 
-            bindingNormal!!.phisingTextView.text = if (isPhishing) "피싱 감지됨" else "정상"
+            bindingNormal!!.phisingTextView.text = if (isPhishing) "보이스피싱 감지됨" else "정상"
             bindingNormal!!.phsingImageView1.setImageResource(
                 if (isPhishing) R.drawable.policy_alert_24dp_c00000_fill0_wght400_grad0_opsz24 else R.drawable.gpp_bad_24dp_92d050_fill0_wght400_grad0_opsz24,
             )
@@ -1362,6 +1382,7 @@ class CallRecordingService : Service() {
         currentPhoneNumber = null
         callStartTime = 0
         currentCDNUploadPath = null
+        segmentUploadCount = 0
 
         Log.d(TAG, "통화 종료 완료, 서비스 중지")
         stopSelf()

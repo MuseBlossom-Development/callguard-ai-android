@@ -13,17 +13,13 @@ import android.os.Looper
 import android.os.Vibrator
 import android.preference.PreferenceManager
 import android.util.Log
-import android.widget.Toast
 import androidx.annotation.UiThread
 import com.museblossom.callguardai.domain.repository.AudioAnalysisRepositoryInterface
-import com.museblossom.callguardai.util.wave.encodeWaveFile
 import com.museblossom.deepvoice.util.AudioSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
-import java.util.*
 
 class Recorder(
     context: Context,
@@ -35,6 +31,7 @@ class Recorder(
 ) {
     private val context: Context
     private var currentRecordingFile: String? = null
+    private var recorderListener: RecorderListner? = null
 
     init {
         this.context = context.applicationContext ?: context
@@ -43,12 +40,16 @@ class Recorder(
     private var mediaRecorder: MediaRecorder? = null
     private var audioRecord: AudioRecord? = null
     var isRecording = false
-    private var audioSource: AudioSource? = null
-    private var startTime: Long = 0
     private val handler = Handler(Looper.getMainLooper())
-    private var recorderListener: RecorderListner? = null
-    private var isVibrate = true
+    private var audioSource: AudioSource? = null
     private var recordingThread: Thread? = null
+    private var startTime: Long = 0
+
+    // 20초 간격 분할 전송 제한 관련 변수
+    private var segmentCount = 0
+    private val maxSegments = 10 // 20초 x 10 = 총 200초
+    private val segmentIntervalMs = 20 * 1000L // 20초
+    private var lastSegmentTime: Long = 0
 
     // Whisper 최적화 상수
     companion object {
@@ -67,6 +68,18 @@ class Recorder(
             return File(
                 context.filesDir,
                 "call_recording/$baseName.wav",
+            ).absolutePath
+        }
+
+        fun getSegmentFilePath(
+            context: Context,
+            uuid: String?,
+            segmentIndex: Int,
+        ): String {
+            val baseName = if (uuid == null) System.currentTimeMillis().toString() else uuid
+            return File(
+                context.filesDir,
+                "call_recording/${baseName}_segment_${segmentIndex}.wav",
             ).absolutePath
         }
 
@@ -123,7 +136,7 @@ class Recorder(
 
         val runnable =
             Runnable {
-                startDirectWavRecording() // Simplified to just use direct WAV recording
+                startDirectWavRecording()
             }
 
         if (delayToWaitForRecordingPreparation <= 0L) {
@@ -160,6 +173,10 @@ class Recorder(
         val file = File(filepath)
         file.parentFile?.mkdirs()
 
+        // 분할 전송 카운터 초기화
+        segmentCount = 0
+        lastSegmentTime = System.currentTimeMillis()
+
         audioRecord?.startRecording()
 
         recordingThread =
@@ -170,55 +187,7 @@ class Recorder(
     }
 
     /**
-     * MediaRecorder 폴백 (기존 방식)
-     */
-    private fun startMediaRecorderRecording() {
-        // 서버에서 받은 UUID 사용, 없으면 타임스탬프 사용
-        val uuid = currentCallUuid ?: System.currentTimeMillis().toString()
-        val filepath = getFilePath(context, uuid)
-
-        if (mediaRecorder != null) {
-            mediaRecorder!!.stop()
-            mediaRecorder!!.reset()
-            mediaRecorder!!.release()
-        }
-
-        mediaRecorder = MediaRecorder()
-        mediaRecorder!!.setOnErrorListener { _, what, extra ->
-            Toast.makeText(context, "녹음 에러", Toast.LENGTH_SHORT).show()
-            stopRecording()
-        }
-
-        // 오디오 매니저 설정
-        setupAudioManager()
-
-        // Whisper 권장 포맷으로 설정
-        mediaRecorder!!.setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-        mediaRecorder!!.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-        mediaRecorder!!.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-        mediaRecorder!!.setAudioSamplingRate(SAMPLE_RATE)
-        mediaRecorder!!.setAudioChannels(1)
-        mediaRecorder!!.setAudioEncodingBitRate(128000) // 128kbps AAC
-        mediaRecorder!!.setMaxDuration(100000)
-
-        val file = File(filepath)
-        file.parentFile?.mkdirs()
-        if (file.exists()) file.delete()
-
-        mediaRecorder!!.setOutputFile(filepath)
-
-        try {
-            mediaRecorder!!.prepare()
-            mediaRecorder!!.start()
-        } catch (e: Exception) {
-            Log.e("녹음", "MediaRecorder 준비/시작 실패", e)
-            mediaRecorder?.reset()
-            stopRecording()
-        }
-    }
-
-    /**
-     * WAV 파일 직접 작성
+     * WAV 파일 직접 작성 (20초 간격 처리 포함)
      */
     private fun writeWavFile(
         outputFile: File,
@@ -232,6 +201,29 @@ class Recorder(
                 val readSize = audioRecord?.read(buffer, 0, buffer.size) ?: 0
                 if (readSize > 0) {
                     audioData.addAll(buffer.take(readSize))
+                }
+
+                // 20초마다 분할 처리 (최대 10번)
+                val currentTime = System.currentTimeMillis()
+                if (segmentCount < maxSegments &&
+                    (currentTime - lastSegmentTime) >= segmentIntervalMs &&
+                    audioData.isNotEmpty()
+                ) {
+
+                    // 현재까지의 데이터로 분할 파일 생성 및 전송
+                    processSegmentData(audioData.toShortArray(), segmentCount)
+
+                    segmentCount++
+                    lastSegmentTime = currentTime
+
+                    Log.d("녹음", "20초 분할 처리 완료: ${segmentCount}/${maxSegments}")
+
+                    // 최대 횟수 도달 시 녹음 종료
+                    if (segmentCount >= maxSegments) {
+                        Log.i("녹음", "최대 분할 횟수(${maxSegments})에 도달하여 녹음 종료")
+                        isRecording = false // 녹음 상태를 false로 변경하여 루프 종료
+                        break
+                    }
                 }
             }
 
@@ -261,8 +253,172 @@ class Recorder(
                     Log.w("녹음", "파일 동기화 확인 중 오류", e)
                 }
             }
+
+            // 최대 분할 횟수에 도달하여 녹음이 종료된 경우 자동으로 stopRecording 호출
+            if (segmentCount >= maxSegments) {
+                Log.i("녹음", "분할 전송 완료로 인한 자동 녹음 종료")
+                handler.post {
+                    stopRecording(isUserStop = false)
+                }
+            }
+
         } catch (e: Exception) {
             Log.e("녹음", "WAV 파일 작성 중 오류", e)
+        }
+    }
+
+    /**
+     * 20초 분할 데이터 처리
+     */
+    private fun processSegmentData(audioData: ShortArray, segmentIndex: Int) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val uuid = currentCallUuid ?: System.currentTimeMillis().toString()
+                val segmentFile = File(
+                    context.filesDir,
+                    "call_recording/${uuid}_segment_${segmentIndex}_${System.currentTimeMillis()}.wav"
+                )
+                segmentFile.parentFile?.mkdirs()
+
+                // 분할 데이터를 WAV 파일로 저장
+                com.museblossom.callguardai.util.wave.encodeWaveFile(
+                    segmentFile,
+                    audioData,
+                )
+
+                Log.d("녹음", "분할 파일 생성: ${segmentFile.name} (${audioData.size} 샘플)")
+
+                // 딥보이스 분석을 위한 분할 파일 처리
+                processDeepVoiceAnalysis(segmentFile)
+
+            } catch (e: Exception) {
+                Log.e("녹음", "분할 데이터 처리 중 오류", e)
+            }
+        }
+    }
+
+    /**
+     * 딥페이크 분석 - CDN 업로드 방식
+     */
+    private suspend fun processDeepVoiceAnalysis(audioFile: File) {
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
+            // 파일 존재 및 유효성 확인
+            if (!audioFile.exists()) {
+                Log.e("녹음", "딥보이스 분석 파일이 존재하지 않음: ${audioFile.absolutePath}")
+                return@withContext
+            }
+
+            if (audioFile.length() == 0L) {
+                Log.e("녹음", "딥보이스 분석 파일 크기가 0: ${audioFile.absolutePath}")
+                return@withContext
+            }
+
+            // CDN 업로드 경로가 있는 경우만 처리
+            currentCDNUploadPath?.let { cdnPath ->
+                currentCallUuid?.let { uuid ->
+                    try {
+                        // {UUID}_{FILE_NAME}.wav 형식으로 업로드 URL 생성
+                        val baseUrl = cdnPath.substringBeforeLast('/') + "/"
+                        val queryParams =
+                            if ('?' in cdnPath) "?" + cdnPath.substringAfter('?') else ""
+                        val deepVoiceFileName =
+                            "${uuid}_deepvoice_${System.currentTimeMillis()}.wav"
+                        val deepVoiceUploadUrl = baseUrl + deepVoiceFileName + queryParams
+
+                        Log.d("녹음", "딥보이스 분석용 CDN 업로드: $deepVoiceFileName")
+
+                        // CDN 업로드 방식으로 변경
+                        audioAnalysisRepository.analyzeDeepVoiceCallback(
+                            audioFile = audioFile,
+                            uploadUrl = deepVoiceUploadUrl,
+                            onSuccess = {
+                                Log.d("녹음", "딥보이스 분석용 파일 업로드 완료 - FCM 결과 대기: $deepVoiceFileName")
+                                // FCM에서 결과를 받을 때까지 대기
+                            },
+                            onError = { error ->
+                                Log.e("딥보이스", "딥보이스 분석 업로드 실패: $error")
+                                // 기본값으로 콜백 호출
+                                detectCallback(false, 0)
+                            },
+                        )
+
+                        // 분석 완료 후 임시 파일 정리
+                        kotlinx.coroutines.delay(1000) // 업로드 완료 대기
+                        try {
+                            if (audioFile.exists()) {
+                                audioFile.delete()
+                            } else {
+                                // else 분기 추가
+                                Log.w(
+                                    "녹음",
+                                    "딥보이스 분석 파일이 존재하지 않아 삭제하지 않음: ${audioFile.absolutePath}",
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w("녹음", "딥보이스 분석 파일 정리 실패", e)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("녹음", "딥보이스 CDN 업로드 중 오류", e)
+                        detectCallback(false, 0)
+                    }
+                } ?: run {
+                    Log.e("녹음", "UUID가 없어 딥보이스 분석 불가")
+                    detectCallback(false, 0)
+                }
+            } ?: run {
+                Log.e("녹음", "CDN 업로드 경로가 없어 딥보이스 분석 불가")
+                detectCallback(false, 0)
+            }
+        }
+    }
+
+    /**
+     * MediaRecorder 폴백 (기존 방식)
+     */
+    private fun startMediaRecorderRecording() {
+        val uuid = currentCallUuid ?: System.currentTimeMillis().toString()
+        val filepath = getFilePath(context, uuid)
+
+        if (mediaRecorder != null) {
+            try {
+                mediaRecorder!!.stop()
+                mediaRecorder!!.reset()
+                mediaRecorder!!.release()
+            } catch (e: Exception) {
+                Log.w("녹음", "이전 MediaRecorder 정리 중 예외", e)
+            }
+        }
+
+        mediaRecorder = MediaRecorder()
+        mediaRecorder!!.setOnErrorListener { _, what, extra ->
+            detectCallback(false, 0)
+        }
+
+        // 오디오 매니저 설정
+        setupAudioManager()
+
+        // Whisper 권장 포맷으로 설정
+        mediaRecorder!!.setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+        mediaRecorder!!.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+        mediaRecorder!!.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+        mediaRecorder!!.setAudioSamplingRate(SAMPLE_RATE)
+        mediaRecorder!!.setAudioChannels(1)
+        mediaRecorder!!.setAudioEncodingBitRate(128000) // 128kbps AAC
+        mediaRecorder!!.setMaxDuration(100000)
+
+        val file = File(filepath)
+        file.parentFile?.mkdirs()
+        if (file.exists()) file.delete()
+
+        mediaRecorder!!.setOutputFile(filepath)
+
+        try {
+            mediaRecorder!!.prepare()
+            mediaRecorder!!.start()
+        } catch (e: Exception) {
+            Log.e("녹음", "MediaRecorder 준비/시작 실패", e)
+            mediaRecorder?.reset()
+            stopRecording()
         }
     }
 
@@ -353,7 +509,10 @@ class Recorder(
 
                     // 파일 존재 및 크기 확인 후 처리
                     if (originalFile.exists() && originalFile.length() > 0L) {
-                        Log.i("녹음", "녹음 완료: ${originalFile.name} (${originalFile.length()} bytes)")
+                        Log.i(
+                            "녹음",
+                            "녹음 완료: ${originalFile.name} (${originalFile.length()} bytes), 분할 전송: ${segmentCount}회"
+                        )
 
                         // 파일 분리 및 병렬 처리
                         prepareAndProcessFiles(originalFile, isIsOnlyWhisper)
@@ -383,6 +542,7 @@ class Recorder(
                     Log.w("녹음", "Whisper 전용 모드: currentRecordingFile이 null")
                 }
             }
+
         } catch (e: Exception) {
             Log.e("녹음", "stopRecording 오류", e)
         }
@@ -409,7 +569,7 @@ class Recorder(
 
                 if (isIsOnlyWhisper == false) {
                     // 딥페이크 분석용 파일 복사 (STT는 원본 사용)
-                    val deepVoiceFile = File("${basePath}_딥페이크분석.wav")
+                    val deepVoiceFile = File("${basePath}_deepvoice.wav")
 
                     // 병렬 처리: 딥페이크 분석용 복사와 STT 처리 동시 시작
                     val deepVoiceJob =
@@ -448,7 +608,7 @@ class Recorder(
         originalFile: File,
         targetFile: File,
     ) {
-        withContext(Dispatchers.IO) {
+        kotlinx.coroutines.withContext(Dispatchers.IO) {
             try {
                 // 원본 파일 존재 및 유효성 확인
                 if (!originalFile.exists()) {
@@ -477,82 +637,7 @@ class Recorder(
                     Log.e("녹음", "파일 복사 후 검증 실패: ${targetFile.absolutePath}")
                 }
             } catch (e: Exception) {
-                Log.e("녹음", "딥페이크 분석용 파일 복사 실패: ${e.message}", e)
-            }
-        }
-    }
-
-    /**
-     * 딥페이크 분석 - CDN 업로드 방식
-     */
-    private suspend fun processDeepVoiceAnalysis(audioFile: File) {
-        withContext(Dispatchers.IO) {
-            // 파일 존재 및 유효성 확인
-            if (!audioFile.exists()) {
-                Log.e("녹음", "딥보이스 분석 파일이 존재하지 않음: ${audioFile.absolutePath}")
-                return@withContext
-            }
-
-            if (audioFile.length() == 0L) {
-                Log.e("녹음", "딥보이스 분석 파일 크기가 0: ${audioFile.absolutePath}")
-                return@withContext
-            }
-
-            // CDN 업로드 경로가 있는 경우만 처리
-            currentCDNUploadPath?.let { cdnPath ->
-                currentCallUuid?.let { uuid ->
-                    try {
-                        // {UUID}_{FILE_NAME}.mp3 형식으로 업로드 URL 생성
-                        val baseUrl = cdnPath.substringBeforeLast('/') + "/"
-                        val queryParams =
-                            if ('?' in cdnPath) "?" + cdnPath.substringAfter('?') else ""
-                        val deepVoiceFileName =
-                            "${uuid}_deepvoice_${System.currentTimeMillis()}.mp3"
-                        val deepVoiceUploadUrl = baseUrl + deepVoiceFileName + queryParams
-
-                        Log.d("녹음", "딥보이스 분석용 CDN 업로드: $deepVoiceFileName")
-
-                        // CDN 업로드 방식으로 변경
-                        audioAnalysisRepository.analyzeDeepVoiceCallback(
-                            audioFile = audioFile,
-                            uploadUrl = deepVoiceUploadUrl,
-                            onSuccess = {
-                                Log.d("녹음", "딥보이스 분석용 파일 업로드 완료 - FCM 결과 대기: $deepVoiceFileName")
-                                // FCM에서 결과를 받을 때까지 대기
-                            },
-                            onError = { error ->
-                                Log.e("딥보이스", "딥보이스 분석 업로드 실패: $error")
-                                // 기본값으로 콜백 호출
-                                detectCallback(false, 0)
-                            },
-                        )
-
-                        // 분석 완료 후 임시 파일 정리
-                        kotlinx.coroutines.delay(1000) // 업로드 완료 대기
-                        try {
-                            if (audioFile.exists()) {
-                                audioFile.delete()
-                            } else {
-                                // else 분기 추가
-                                Log.w(
-                                    "녹음",
-                                    "딥보이스 분석 파일이 존재하지 않아 삭제하지 않음: ${audioFile.absolutePath}",
-                                )
-                            }
-                        } catch (e: Exception) {
-                            Log.w("녹음", "딥보이스 분석 파일 정리 실패", e)
-                        }
-                    } catch (e: Exception) {
-                        Log.e("녹음", "딥보이스 CDN 업로드 중 오류", e)
-                        detectCallback(false, 0)
-                    }
-                } ?: run {
-                    Log.e("녹음", "UUID가 없어 딥보이스 분석 불가")
-                    detectCallback(false, 0)
-                }
-            } ?: run {
-                Log.e("녹음", "CDN 업로드 경로가 없어 딥보이스 분석 불가")
-                detectCallback(false, 0)
+                Log.e("녹음", "딥보이스 분석용 파일 복사 실패: ${e.message}", e)
             }
         }
     }
@@ -561,7 +646,7 @@ class Recorder(
      * Whisper STT - 전용 파일 사용
      */
     private suspend fun processWhisperSTT(filePath: String) {
-        withContext(Dispatchers.Main) {
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
             // 파일 완성도 검증 후 콜백 호출
             val file = File(filePath)
             val isValid = validateWaveFile(file)
@@ -687,4 +772,7 @@ class Recorder(
         }
         return false
     }
+
+    // 진동 상태 플래그
+    private var isVibrate = false
 }

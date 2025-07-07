@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "385699583181-0tdlm8fbhdmkcansumbrnme62s99f98f.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.museblossom.callguardai",
+            "certificate_hash": "a3b503c7b94c1559a568bb46d0df4020d3eec598"
+          }
+        },
+        {
           "client_id": "385699583181-rq21vfhhqaoj7cm47a07pdkfa220ko4j.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

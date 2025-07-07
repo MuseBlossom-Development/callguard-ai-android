@@ -1,6 +1,9 @@
 package com.museblossom.callguardai.domain.repository
 
-import com.museblossom.callguardai.data.model.*
+import com.museblossom.callguardai.data.model.CDNUrlData
+import com.museblossom.callguardai.data.model.LoginData
+import com.museblossom.callguardai.data.model.STTModelData
+import com.museblossom.callguardai.data.model.TermsData
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 
@@ -96,5 +99,5 @@ interface CallGuardRepositoryInterface {
         termsType: String,
         lang: String = "kr",
         version: Int? = null,
-    ): Result<String>
+    ): Result<TermsData>
 }

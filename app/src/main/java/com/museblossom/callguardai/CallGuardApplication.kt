@@ -1,6 +1,8 @@
 package com.museblossom.callguardai
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -88,6 +90,9 @@ class CallGuardApplication : Application() {
             AppCompatDelegate.MODE_NIGHT_NO,
         )
 
+        // Firebase 기본 알림 채널 생성
+        createDefaultNotificationChannel()
+
         // FCM 초기화
         initializeFCM()
 
@@ -114,6 +119,25 @@ class CallGuardApplication : Application() {
      */
     private fun getTestModePreferences(): SharedPreferences {
         return getSharedPreferences(PREF_TEST_MODE, Context.MODE_PRIVATE)
+    }
+
+    /**
+     * 기본 알림 채널 생성
+     */
+    private fun createDefaultNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelId = "default_channel"
+            val channelName = "CallGuard Default Channel"
+            val channelDescription = "기본 알림 채널"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+            val channel = NotificationChannel(channelId, channelName, importance).apply {
+                description = channelDescription
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+            Log.d("Notification", "기본 알림 채널 생성됨: $channelId")
+        }
     }
 
     private fun initializeFCM() {

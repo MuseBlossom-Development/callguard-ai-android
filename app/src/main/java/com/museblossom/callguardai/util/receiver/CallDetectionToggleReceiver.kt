@@ -71,8 +71,8 @@ class CallDetectionToggleReceiver : BroadcastReceiver() {
             val channelId = context.getString(R.string.channel_id__call_recording)
             val notification =
                 NotificationCompat.Builder(context, channelId)
-                    .setContentTitle("CallGuardAI 보호 활성화")
-                    .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
+                    .setContentTitle("CallGuardAI 보호")
+                    .setContentText("$statusText "+ "\n" + "- 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
                     .setSmallIcon(R.drawable.app_logo)
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setAutoCancel(false)

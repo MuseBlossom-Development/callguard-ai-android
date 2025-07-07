@@ -145,6 +145,17 @@
             </intent-filter>
         </service>
 
+        <!-- Firebase 기본 알림 채널 설정 -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="default_channel" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/app_logo" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/mainAppColor" />
+
         <!-- 통화 감지 토글 리시버 (알림 액션 버튼용) -->
         <receiver
             android:name=".util.receiver.CallDetectionToggleReceiver"

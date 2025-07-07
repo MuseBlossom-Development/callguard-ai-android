@@ -1,5 +1,8 @@
 package com.museblossom.callguardai.service
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.os.Build
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
@@ -30,6 +33,32 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
     companion object {
         private const val TAG = "MyFirebaseMsgService"
+        private const val DEFAULT_CHANNEL_ID = "default_channel"
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        Log.d(TAG, "🔥 MyFirebaseMessagingService onCreate() 호출됨")
+        createDefaultNotificationChannel()
+    }
+
+    /**
+     * 기본 알림 채널 생성
+     */
+    private fun createDefaultNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelName = "CallGuard 기본 알림"
+            val channelDescription = "Firebase 기본 알림 채널"
+            val importance = NotificationManager.IMPORTANCE_DEFAULT
+
+            val channel = NotificationChannel(DEFAULT_CHANNEL_ID, channelName, importance).apply {
+                description = channelDescription
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+            Log.d(TAG, "✅ Firebase 기본 알림 채널 생성됨: $DEFAULT_CHANNEL_ID")
+        }
     }
 
     /**
@@ -37,7 +66,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      */
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "${getString(R.string.log_fcm_token_generated)}: $token")
+        Log.d(TAG, "🔑 ${getString(R.string.log_fcm_token_generated)}: $token")
 
         // 토큰을 서버로 전송
         sendTokenToServer(token)
@@ -48,8 +77,19 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
      */
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
+        Log.d(TAG, "🔥🔥🔥 MyFirebaseMessagingService.onMessageReceived() 호출됨!!")
 
-        Log.d(TAG, getString(R.string.log_fcm_message_received))
+        // 알림 채널 확인 및 필요시 생성
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            val existingChannel = notificationManager.getNotificationChannel(DEFAULT_CHANNEL_ID)
+            if (existingChannel == null) {
+                Log.d(TAG, "⚠️ 기본 채널이 없어서 다시 생성")
+                createDefaultNotificationChannel()
+            }
+        }
+
+        Log.d(TAG, "📨 ${getString(R.string.log_fcm_message_received)}")
         Log.d(TAG, "  - From: ${remoteMessage.from}")
         Log.d(TAG, "  - MessageId: ${remoteMessage.messageId}")
         Log.d(TAG, "  - MessageType: ${remoteMessage.messageType}")
@@ -179,16 +219,22 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             // 통화 중이면서 오버레이가 표시되어 있을 때는 CallRecordingService에서 UI 업데이트
             Log.d(TAG, getString(R.string.log_overlay_visible_service_update))
             CallRecordingService.updateDeepVoiceFromFCM(uuid, probability)
-        } else {
+        } else if (probability >= 50) {  // 50% 이상일 때만 알림 표시
             // 통화 종료 후이거나 오버레이가 없으면 FCM에서 직접 알림 표시
             Log.d(TAG, getString(R.string.log_overlay_hidden_fcm_notification))
             showDeepVoiceNotification(probability, contactName)
+        } else {
+            Log.d(TAG, "딥보이스 확률 $probability%로 50% 미만이므로 알림 표시하지 않음")
         }
 
-        Log.w(
-            TAG,
-            "${getString(R.string.log_deep_voice_detected_emoji)} 확률: $probability% - 연락처: $contactName",
-        )
+        if (probability >= 50) {
+            Log.w(
+                TAG,
+                "${getString(R.string.log_deep_voice_detected_emoji)} 확률: $probability% - 연락처: $contactName",
+            )
+        } else {
+            Log.d(TAG, "딥보이스 확률: $probability% - 연락처: $contactName (안전)")
+        }
     }
 
     /**
@@ -212,16 +258,22 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             // 통화 중이면서 오버레이가 표시되어 있을 때는 CallRecordingService에서 UI 업데이트
             Log.d(TAG, getString(R.string.log_overlay_visible_service_update))
             CallRecordingService.updateVoicePhishingFromFCM(uuid, probability)
-        } else {
+        } else if (probability >= 50) {  // 50% 이상일 때만 알림 표시
             // 통화 종료 후이거나 오버레이가 없으면 FCM에서 직접 알림 표시
             Log.d(TAG, getString(R.string.log_overlay_hidden_fcm_notification))
             showVoicePhishingNotification(probability, contactName)
+        } else {
+            Log.d(TAG, "보이스피싱 확률 $probability%로 50% 미만이므로 알림 표시하지 않음")
         }
 
-        Log.e(
-            TAG,
-            "${getString(R.string.log_voice_phishing_detected_emoji)} 확률: $probability% - 연락처: $contactName",
-        )
+        if (probability >= 50) {
+            Log.e(
+                TAG,
+                "${getString(R.string.log_voice_phishing_detected_emoji)} 확률: $probability% - 연락처: $contactName",
+            )
+        } else {
+            Log.d(TAG, "보이스피싱 확률: $probability% - 연락처: $contactName (안전)")
+        }
     }
 
     /**

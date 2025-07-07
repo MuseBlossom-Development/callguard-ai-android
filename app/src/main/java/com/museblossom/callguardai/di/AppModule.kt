@@ -50,7 +50,7 @@ object AppModule {
     @Named("CallGuardApi")
     fun provideCallGuardRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://1026a630-d34e-4090-b2db-894bcb256a4d.mock.pstmn.io/") // Mock 서버 URL (개발용)
+            .baseUrl("https://dev-api-deepvoice.museblossom.com/") // Mock 서버 URL (개발용)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -61,7 +61,7 @@ object AppModule {
     @Named("DeepVoiceApi")
     fun provideDeepVoiceRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://1026a630-d34e-4090-b2db-894bcb256a4d.mock.pstmn.io/") // Mock 서버 URL (개발용)
+            .baseUrl("https://dev-api-deepvoice.museblossom.com/") // Mock 서버 URL (개발용)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

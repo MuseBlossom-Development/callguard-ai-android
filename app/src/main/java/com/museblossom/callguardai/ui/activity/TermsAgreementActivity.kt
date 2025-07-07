@@ -7,17 +7,43 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,12 +59,15 @@ import com.google.firebase.messaging.FirebaseMessaging
 import com.museblossom.callguardai.data.model.CDNUrlData
 import com.museblossom.callguardai.data.model.LoginData
 import com.museblossom.callguardai.data.model.STTModelData
+import com.museblossom.callguardai.data.model.TermsData
 import com.museblossom.callguardai.domain.repository.CallGuardRepositoryInterface
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.*
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 @EntryPoint
@@ -532,8 +561,9 @@ fun TermsDetailDialog(
             // 실제 API 호출
             val result = callGuardRepository.getTerms(termsType = termsType, lang = "kr")
             result.fold(
-                onSuccess = { termsContent ->
-                    content = termsContent
+                onSuccess = { termsData ->
+                    // JSON 응답에서 content만 추출
+                    content = termsData.content
                 },
                 onFailure = { exception ->
                     Log.e("TermsDetailDialog", "약관 조회 실패: ${exception.message}", exception)
@@ -803,7 +833,7 @@ fun TermsAgreementScreenPreview() {
 
             override suspend fun uploadAudioToCDN(
                 uploadUrl: String,
-                audioFile: java.io.File,
+                audioFile: File,
             ) = Result.success(Unit)
 
             override suspend fun sendVoiceText(
@@ -821,18 +851,25 @@ fun TermsAgreementScreenPreview() {
 
             override suspend fun downloadFile(
                 url: String,
-                outputFile: java.io.File,
+                outputFile: File,
                 onProgress: kotlinx.coroutines.flow.MutableStateFlow<Double>?,
                 expectedMD5: String?,
-            ) = Result.success(java.io.File(""))
+            ) = Result.success(File(""))
 
-            override fun isFileExists(file: java.io.File): Boolean = false
+            override fun isFileExists(file: File): Boolean = false
 
             override suspend fun getTerms(
                 termsType: String,
                 lang: String,
                 version: Int?,
-            ) = Result.success("Preview 약관 내용")
+            ) = Result.success(
+                TermsData(
+                    title = "Preview 약관",
+                    content = "Preview 약관 내용",
+                    version = 1,
+                    lang = "kr"
+                )
+            )
         }
 
     MaterialTheme {

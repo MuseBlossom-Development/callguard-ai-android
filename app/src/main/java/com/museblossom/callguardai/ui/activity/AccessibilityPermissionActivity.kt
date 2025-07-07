@@ -316,7 +316,7 @@ class AccessibilityPermissionActivity : AppCompatActivity() {
             val notification =
                 NotificationCompat.Builder(this, channelId)
                     .setContentTitle("CallGuardAI 보호")
-                    .setContentText("$statusText - 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
+                    .setContentText("$statusText "+ "\n" + "- 보이스피싱과 딥보이스를 실시간으로 탐지합니다")
                     .setSmallIcon(R.drawable.app_logo)
                     .setPriority(NotificationCompat.PRIORITY_LOW) // 낮은 우선순위로 조용히 표시
                     .setAutoCancel(false) // 삭제 불가능
